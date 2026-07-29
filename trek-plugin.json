@@ -21,8 +21,6 @@
     "db:own",
     "db:read:trips",
     "ws:broadcast:trip",
-    "hook:day-schedule-provider",
-    "hook:map-layer-provider",
     "hook:pdf-section-provider",
     "hook:trip-card-provider"
   ]

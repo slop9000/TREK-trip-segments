@@ -21,10 +21,16 @@ the range, and the accommodation stays that overlap it. A booking that crosses a
 train that takes you from one leg to the next, deliberately appears in both legs. Bookings that are
 not attached to a day at all are listed separately instead of being silently dropped.
 
-Legs also show up outside the tab. The day plan gets a small banner where a leg begins and ends, the
-trip map gets one coloured line per leg following its stops in visiting order, the PDF export gets a
-summary section listing every leg with its dates and counts, and the trip card on your dashboard gets
-a badge with the leg count and the first few names.
+Legs also show up outside the tab. The PDF export gets a summary section listing every leg with its
+dates and counts, and the trip card on your dashboard gets a badge with the leg count and the first
+few names.
+
+Two further surfaces are built in and switch on by themselves once your TREK is new enough to offer
+them: a small banner in the day plan where each leg begins and ends, and one coloured line per leg on
+the trip map, following its stops in visiting order. They need permissions that TREK 3.4.1 does not
+have yet, and a plugin that asked for a permission its host did not recognise would refuse to install
+at all, so this release does not ask. Nothing breaks in the meantime; those two surfaces simply stay
+empty until a later version of the plugin turns them on.
 
 Colours are limited to four on purpose. TREK's map, day plan and card surfaces accept a fixed set of
 four tones rather than arbitrary colours, so the palette is exactly those four. A leg therefore looks
@@ -41,8 +47,6 @@ identical everywhere it appears, instead of being one colour in the tab and a di
 | `db:own` | Stores the legs themselves — name, colour, day range — in the plugin's own SQLite database. Nothing is written to TREK's tables. |
 | `db:read:trips` | Reads the trip's days, bookings and accommodation stays in order to resolve day ranges and build the per-leg view. Read-only. |
 | `ws:broadcast:trip` | Notifies other people looking at the same trip that the legs changed, so their tab refreshes without a reload. |
-| `hook:day-schedule-provider` | Draws the "leg begins" and "leg ends" banners inside the day plan. |
-| `hook:map-layer-provider` | Draws one coloured line per leg on the trip map. |
 | `hook:pdf-section-provider` | Adds the leg summary section to the trip's PDF export. |
 | `hook:trip-card-provider` | Adds the leg-count badge to the trip card on the dashboard. |
 

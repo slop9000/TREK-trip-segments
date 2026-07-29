@@ -102,22 +102,28 @@ const LINK_DIR = '.link';
 const ROOT_FILES = ['trek-plugin.json', 'README.md', 'LICENSE', 'package.json'];
 
 /**
- * Permissions only some TREK builds know about.
+ * Permissions that only NEWER TREK builds know about.
  *
- * These must NOT go in the shipped manifest: `install/manifest.ts:181` throws on
- * an unknown permission string, so declaring one would stop the plugin
- * installing at all on a host without the feature — a hard failure, not a
- * graceful degradation. The hook implementations ship unconditionally instead,
- * and are simply never invoked where the host has no mapping for them.
+ * None of these may go in the shipped manifest: `install/manifest.ts:181` throws
+ * on an unknown permission string, so declaring one stops the plugin installing
+ * at all on a host without it — a hard failure, not a graceful degradation. The
+ * hook implementations ship unconditionally instead and are simply never invoked
+ * where the host has no mapping for them.
  *
- * These are added to the DEV-LINK copy only. `pack` reads the untouched root
- * manifest, so the published artifact stays installable everywhere.
+ * As of TREK 3.4.1 (upstream `main`, and npm trek-plugin-sdk@1.5.0):
+ *   - day-schedule + map-layer  are on `dev`, unreleased
+ *   - day-tint                  is on this author's fork only
  *
- * Detection is automatic: we ask the TREK checkout we are linked against whether
- * it knows the permission. Requiring a flag meant a plain `npm run build` would
- * silently revert the linked manifest and the feature would evaporate on the
- * next re-link. `--day-tint` / `--no-day-tint` force the answer either way.
+ * So the published manifest declares five permissions — enough for the tab, the
+ * PDF section and the trip-card badge — and the rest activate wherever the host
+ * knows them, through the dev-link copy below.
  */
+const CANDIDATE_PERMISSIONS = [
+  'hook:day-schedule-provider',
+  'hook:map-layer-provider',
+  'hook:day-tint-provider',
+];
+
 function hostKnowsPermission(permission) {
   const candidates = [
     process.env.TREK_REPO && path.join(process.env.TREK_REPO, 'server/src/nest/plugins/protocol/envelope.ts'),
@@ -130,12 +136,16 @@ function hostKnowsPermission(permission) {
   return false;
 }
 
-const DAY_TINT = 'hook:day-tint-provider';
-const dayTint = process.argv.includes('--no-day-tint')
-  ? false
-  : process.argv.includes('--day-tint') || process.env.TREK_DAY_TINT === '1' || hostKnowsPermission(DAY_TINT);
-
-const OPTIONAL_PERMISSIONS = dayTint ? [DAY_TINT] : [];
+/**
+ * Ask the TREK checkout we are linked against which of these it actually knows,
+ * rather than requiring a flag. With a flag, a plain `npm run build` would
+ * silently revert the linked manifest and the features would evaporate on the
+ * next re-link. `--no-optional` forces the shipped set, to preview exactly what
+ * a released TREK sees.
+ */
+const OPTIONAL_PERMISSIONS = process.argv.includes('--no-optional')
+  ? []
+  : CANDIDATE_PERMISSIONS.filter(hostKnowsPermission);
 
 // Overwrite in place rather than wiping first: once TREK has dev-linked this
 // directory it holds a junction into it, and Windows answers EPERM to a

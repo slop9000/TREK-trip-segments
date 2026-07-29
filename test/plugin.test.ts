@@ -30,7 +30,8 @@ const HOOK_PERMISSION: Record<string, string> = {
 describe('manifest and code agree', () => {
 /**
  * Hooks we implement on purpose WITHOUT declaring their permission, because the
- * permission does not exist in every TREK yet.
+ * permission does not exist in every TREK yet. As of TREK 3.4.1 (upstream main)
+ * day-schedule and map-layer are on `dev` and day-tint is fork-only.
  *
  * The asymmetry is deliberate and load-bearing:
  *  - implementing an unknown hook is inert — `providersOf` has no permission
@@ -41,7 +42,7 @@ describe('manifest and code agree', () => {
  * `npm run build:daytint` adds the permission to the dev-link copy only, for a
  * fork that has the feature.
  */
-const FORWARD_COMPAT_HOOKS = new Set(['dayTintProvider']);
+const FORWARD_COMPAT_HOOKS = new Set(['dayScheduleProvider', 'mapLayerProvider', 'dayTintProvider']);
 
   it('grants a permission for every hook that needs one today', () => {
     const granted = new Set<string>(manifest.permissions);
