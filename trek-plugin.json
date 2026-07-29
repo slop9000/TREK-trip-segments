@@ -7,6 +7,7 @@
   "trek": ">=3.4.0 <4.0.0",
   "author": "Renzo Beux",
   "description": "Split long multi-destination trips into colour-coded legs, with a per-leg view of the schedule, bookings and stays.",
+  "homepage": "https://github.com/RenzoBeux/TREK-trip-segments",
   "license": "MIT",
   "icon": "Route",
   "tags": ["planning", "itinerary", "multi-destination"],
