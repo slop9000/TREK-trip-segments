@@ -2,14 +2,16 @@
   "actingUserId": 1,
   "trips": {
     "1": {
-      "members": [1],
+      "members": [
+        1
+      ],
       "data": {
         "id": 1,
         "user_id": 1,
-        "title": "Japan — spring",
+        "title": "Japan & Thailand — spring",
         "start_date": "2026-04-10",
-        "end_date": "2026-04-21",
-        "currency": "JPY"
+        "end_date": "2026-04-27",
+        "currency": "EUR"
       },
       "days": [
         {
@@ -21,18 +23,30 @@
           "notes_items": [],
           "assignments": [
             {
+              "id": 300,
+              "day_id": 101,
+              "place_id": 200,
+              "order_index": 0,
+              "place": {
+                "id": 200,
+                "name": "Haneda Airport",
+                "lat": 35.5494,
+                "lng": 139.7798,
+                "category": null
+              }
+            },
+            {
               "id": 301,
               "day_id": 101,
               "place_id": 201,
-              "order_index": 0,
-              "place": { "id": 201, "name": "Haneda Airport", "lat": 35.5494, "lng": 139.7798, "category": null }
-            },
-            {
-              "id": 302,
-              "day_id": 101,
-              "place_id": 202,
               "order_index": 1,
-              "place": { "id": 202, "name": "Shinjuku", "lat": 35.6938, "lng": 139.7034, "category": null }
+              "place": {
+                "id": 201,
+                "name": "Shinjuku Golden Gai",
+                "lat": 35.6938,
+                "lng": 139.7034,
+                "category": null
+              }
             }
           ]
         },
@@ -41,23 +55,47 @@
           "trip_id": 1,
           "day_number": 2,
           "date": "2026-04-11",
-          "title": "Tokyo east",
-          "notes_items": [{ "id": 401, "day_id": 102, "trip_id": 1, "text": "Buy the JR pass", "time": null, "sort_order": 0 }],
+          "title": null,
+          "notes_items": [],
           "assignments": [
+            {
+              "id": 302,
+              "day_id": 102,
+              "place_id": 202,
+              "order_index": 0,
+              "place": {
+                "id": 202,
+                "name": "Senso-ji Temple",
+                "lat": 35.7148,
+                "lng": 139.7967,
+                "category": null
+              }
+            },
             {
               "id": 303,
               "day_id": 102,
               "place_id": 203,
-              "order_index": 0,
-              "assignment_time": "09:30",
-              "place": { "id": 203, "name": "Senso-ji", "lat": 35.7148, "lng": 139.7967, "category": { "id": 5, "name": "Sight", "color": "#8b5cf6", "icon": "Camera" } }
+              "order_index": 1,
+              "place": {
+                "id": 203,
+                "name": "Akihabara",
+                "lat": 35.6984,
+                "lng": 139.7731,
+                "category": null
+              }
             },
             {
               "id": 304,
               "day_id": 102,
               "place_id": 204,
-              "order_index": 1,
-              "place": { "id": 204, "name": "Akihabara", "lat": 35.6984, "lng": 139.7731, "category": null }
+              "order_index": 2,
+              "place": {
+                "id": 204,
+                "name": "Tokyo Skytree",
+                "lat": 35.7101,
+                "lng": 139.8107,
+                "category": null
+              }
             }
           ]
         },
@@ -66,7 +104,7 @@
           "trip_id": 1,
           "day_number": 3,
           "date": "2026-04-12",
-          "title": "Tokyo west",
+          "title": null,
           "notes_items": [],
           "assignments": [
             {
@@ -74,7 +112,39 @@
               "day_id": 103,
               "place_id": 205,
               "order_index": 0,
-              "place": { "id": 205, "name": "Meiji Jingu", "lat": 35.6764, "lng": 139.6993, "category": null }
+              "place": {
+                "id": 205,
+                "name": "Meiji Jingu",
+                "lat": 35.6764,
+                "lng": 139.6993,
+                "category": null
+              }
+            },
+            {
+              "id": 306,
+              "day_id": 103,
+              "place_id": 206,
+              "order_index": 1,
+              "place": {
+                "id": 206,
+                "name": "Shibuya Crossing",
+                "lat": 35.6595,
+                "lng": 139.7004,
+                "category": null
+              }
+            },
+            {
+              "id": 307,
+              "day_id": 103,
+              "place_id": 207,
+              "order_index": 2,
+              "place": {
+                "id": 207,
+                "name": "teamLab Planets",
+                "lat": 35.6497,
+                "lng": 139.7906,
+                "category": null
+              }
             }
           ]
         },
@@ -83,15 +153,34 @@
           "trip_id": 1,
           "day_number": 4,
           "date": "2026-04-13",
-          "title": "Day trip",
+          "title": null,
           "notes_items": [],
           "assignments": [
             {
-              "id": 306,
+              "id": 308,
               "day_id": 104,
-              "place_id": 206,
+              "place_id": 208,
               "order_index": 0,
-              "place": { "id": 206, "name": "Kamakura", "lat": 35.3192, "lng": 139.5467, "category": null }
+              "place": {
+                "id": 208,
+                "name": "Kamakura Great Buddha",
+                "lat": 35.3167,
+                "lng": 139.5358,
+                "category": null
+              }
+            },
+            {
+              "id": 309,
+              "day_id": 104,
+              "place_id": 209,
+              "order_index": 1,
+              "place": {
+                "id": 209,
+                "name": "Enoshima",
+                "lat": 35.2996,
+                "lng": 139.4805,
+                "category": null
+              }
             }
           ]
         },
@@ -104,11 +193,30 @@
           "notes_items": [],
           "assignments": [
             {
-              "id": 307,
+              "id": 310,
               "day_id": 105,
-              "place_id": 207,
+              "place_id": 210,
               "order_index": 0,
-              "place": { "id": 207, "name": "Tokyo Station", "lat": 35.6812, "lng": 139.7671, "category": null }
+              "place": {
+                "id": 210,
+                "name": "Tsukiji Outer Market",
+                "lat": 35.6654,
+                "lng": 139.7707,
+                "category": null
+              }
+            },
+            {
+              "id": 311,
+              "day_id": 105,
+              "place_id": 211,
+              "order_index": 1,
+              "place": {
+                "id": 211,
+                "name": "Tokyo Station",
+                "lat": 35.6812,
+                "lng": 139.7671,
+                "category": null
+              }
             }
           ]
         },
@@ -117,22 +225,34 @@
           "trip_id": 1,
           "day_number": 6,
           "date": "2026-04-15",
-          "title": "Kanazawa",
+          "title": null,
           "notes_items": [],
           "assignments": [
             {
-              "id": 308,
+              "id": 312,
               "day_id": 106,
-              "place_id": 208,
+              "place_id": 212,
               "order_index": 0,
-              "place": { "id": 208, "name": "Kenroku-en", "lat": 36.5622, "lng": 136.6626, "category": null }
+              "place": {
+                "id": 212,
+                "name": "Kenroku-en Garden",
+                "lat": 36.5622,
+                "lng": 136.6626,
+                "category": null
+              }
             },
             {
-              "id": 309,
+              "id": 313,
               "day_id": 106,
-              "place_id": 209,
+              "place_id": 213,
               "order_index": 1,
-              "place": { "id": 209, "name": "Omicho Market", "lat": 36.5717, "lng": 136.6564, "category": null }
+              "place": {
+                "id": 213,
+                "name": "Kanazawa Castle",
+                "lat": 36.5654,
+                "lng": 136.6592,
+                "category": null
+              }
             }
           ]
         },
@@ -141,15 +261,34 @@
           "trip_id": 1,
           "day_number": 7,
           "date": "2026-04-16",
-          "title": "Kanazawa",
+          "title": null,
           "notes_items": [],
           "assignments": [
             {
-              "id": 310,
+              "id": 314,
               "day_id": 107,
-              "place_id": 210,
+              "place_id": 214,
               "order_index": 0,
-              "place": { "id": 210, "name": "Higashi Chaya", "lat": 36.5720, "lng": 136.6669, "category": null }
+              "place": {
+                "id": 214,
+                "name": "Higashi Chaya District",
+                "lat": 36.572,
+                "lng": 136.6669,
+                "category": null
+              }
+            },
+            {
+              "id": 315,
+              "day_id": 107,
+              "place_id": 215,
+              "order_index": 1,
+              "place": {
+                "id": 215,
+                "name": "Omicho Market",
+                "lat": 36.5717,
+                "lng": 136.6564,
+                "category": null
+              }
             }
           ]
         },
@@ -162,11 +301,17 @@
           "notes_items": [],
           "assignments": [
             {
-              "id": 311,
+              "id": 316,
               "day_id": 108,
-              "place_id": 211,
+              "place_id": 216,
               "order_index": 0,
-              "place": { "id": 211, "name": "Shirakawa-go", "lat": 36.2578, "lng": 136.9063, "category": null }
+              "place": {
+                "id": 216,
+                "name": "Shirakawa-go",
+                "lat": 36.2578,
+                "lng": 136.9063,
+                "category": null
+              }
             }
           ]
         },
@@ -177,22 +322,55 @@
           "date": "2026-04-18",
           "title": "Kanazawa to Kyoto",
           "notes_items": [],
-          "assignments": []
+          "assignments": [
+            {
+              "id": 317,
+              "day_id": 109,
+              "place_id": 217,
+              "order_index": 0,
+              "place": {
+                "id": 217,
+                "name": "21st Century Museum",
+                "lat": 36.5608,
+                "lng": 136.658,
+                "category": null
+              }
+            }
+          ]
         },
         {
           "id": 110,
           "trip_id": 1,
           "day_number": 10,
           "date": "2026-04-19",
-          "title": "Kyoto",
+          "title": null,
           "notes_items": [],
           "assignments": [
             {
-              "id": 312,
+              "id": 318,
               "day_id": 110,
-              "place_id": 212,
+              "place_id": 218,
               "order_index": 0,
-              "place": { "id": 212, "name": "Fushimi Inari", "lat": 34.9671, "lng": 135.7727, "category": null }
+              "place": {
+                "id": 218,
+                "name": "Fushimi Inari Taisha",
+                "lat": 34.9671,
+                "lng": 135.7727,
+                "category": null
+              }
+            },
+            {
+              "id": 319,
+              "day_id": 110,
+              "place_id": 219,
+              "order_index": 1,
+              "place": {
+                "id": 219,
+                "name": "Gion",
+                "lat": 35.0037,
+                "lng": 135.7752,
+                "category": null
+              }
             }
           ]
         },
@@ -201,15 +379,34 @@
           "trip_id": 1,
           "day_number": 11,
           "date": "2026-04-20",
-          "title": "Kyoto",
+          "title": null,
           "notes_items": [],
           "assignments": [
             {
-              "id": 313,
+              "id": 320,
               "day_id": 111,
-              "place_id": 213,
+              "place_id": 220,
               "order_index": 0,
-              "place": { "id": 213, "name": "Arashiyama", "lat": 35.0094, "lng": 135.6669, "category": null }
+              "place": {
+                "id": 220,
+                "name": "Arashiyama Bamboo Grove",
+                "lat": 35.0094,
+                "lng": 135.6669,
+                "category": null
+              }
+            },
+            {
+              "id": 321,
+              "day_id": 111,
+              "place_id": 221,
+              "order_index": 1,
+              "place": {
+                "id": 221,
+                "name": "Tenryu-ji",
+                "lat": 35.0157,
+                "lng": 135.6739,
+                "category": null
+              }
             }
           ]
         },
@@ -218,15 +415,198 @@
           "trip_id": 1,
           "day_number": 12,
           "date": "2026-04-21",
+          "title": null,
+          "notes_items": [],
+          "assignments": [
+            {
+              "id": 322,
+              "day_id": 112,
+              "place_id": 222,
+              "order_index": 0,
+              "place": {
+                "id": 222,
+                "name": "Kinkaku-ji",
+                "lat": 35.0394,
+                "lng": 135.7292,
+                "category": null
+              }
+            },
+            {
+              "id": 323,
+              "day_id": 112,
+              "place_id": 223,
+              "order_index": 1,
+              "place": {
+                "id": 223,
+                "name": "Nijo Castle",
+                "lat": 35.0142,
+                "lng": 135.7481,
+                "category": null
+              }
+            }
+          ]
+        },
+        {
+          "id": 113,
+          "trip_id": 1,
+          "day_number": 13,
+          "date": "2026-04-22",
+          "title": "Nara day trip",
+          "notes_items": [],
+          "assignments": [
+            {
+              "id": 324,
+              "day_id": 113,
+              "place_id": 224,
+              "order_index": 0,
+              "place": {
+                "id": 224,
+                "name": "Nara Park",
+                "lat": 34.6851,
+                "lng": 135.8048,
+                "category": null
+              }
+            }
+          ]
+        },
+        {
+          "id": 114,
+          "trip_id": 1,
+          "day_number": 14,
+          "date": "2026-04-23",
+          "title": "Fly to Bangkok",
+          "notes_items": [],
+          "assignments": [
+            {
+              "id": 325,
+              "day_id": 114,
+              "place_id": 225,
+              "order_index": 0,
+              "place": {
+                "id": 225,
+                "name": "Suvarnabhumi Airport",
+                "lat": 13.69,
+                "lng": 100.7501,
+                "category": null
+              }
+            }
+          ]
+        },
+        {
+          "id": 115,
+          "trip_id": 1,
+          "day_number": 15,
+          "date": "2026-04-24",
+          "title": null,
+          "notes_items": [],
+          "assignments": [
+            {
+              "id": 326,
+              "day_id": 115,
+              "place_id": 226,
+              "order_index": 0,
+              "place": {
+                "id": 226,
+                "name": "Grand Palace",
+                "lat": 13.75,
+                "lng": 100.4913,
+                "category": null
+              }
+            },
+            {
+              "id": 327,
+              "day_id": 115,
+              "place_id": 227,
+              "order_index": 1,
+              "place": {
+                "id": 227,
+                "name": "Wat Pho",
+                "lat": 13.7465,
+                "lng": 100.4927,
+                "category": null
+              }
+            }
+          ]
+        },
+        {
+          "id": 116,
+          "trip_id": 1,
+          "day_number": 16,
+          "date": "2026-04-25",
+          "title": null,
+          "notes_items": [],
+          "assignments": [
+            {
+              "id": 328,
+              "day_id": 116,
+              "place_id": 228,
+              "order_index": 0,
+              "place": {
+                "id": 228,
+                "name": "Chatuchak Weekend Market",
+                "lat": 13.7998,
+                "lng": 100.5501,
+                "category": null
+              }
+            }
+          ]
+        },
+        {
+          "id": 117,
+          "trip_id": 1,
+          "day_number": 17,
+          "date": "2026-04-26",
+          "title": null,
+          "notes_items": [],
+          "assignments": [
+            {
+              "id": 329,
+              "day_id": 117,
+              "place_id": 229,
+              "order_index": 0,
+              "place": {
+                "id": 229,
+                "name": "Wat Arun",
+                "lat": 13.7437,
+                "lng": 100.4889,
+                "category": null
+              }
+            },
+            {
+              "id": 330,
+              "day_id": 117,
+              "place_id": 230,
+              "order_index": 1,
+              "place": {
+                "id": 230,
+                "name": "Yaowarat Chinatown",
+                "lat": 13.7398,
+                "lng": 100.51,
+                "category": null
+              }
+            }
+          ]
+        },
+        {
+          "id": 118,
+          "trip_id": 1,
+          "day_number": 18,
+          "date": "2026-04-27",
           "title": "Departure",
           "notes_items": [],
           "assignments": [
             {
-              "id": 314,
-              "day_id": 112,
-              "place_id": 214,
+              "id": 331,
+              "day_id": 118,
+              "place_id": 231,
               "order_index": 0,
-              "place": { "id": 214, "name": "Kansai Airport", "lat": 34.4342, "lng": 135.2328, "category": null }
+              "place": {
+                "id": 231,
+                "name": "Suvarnabhumi Airport (return)",
+                "lat": 13.69,
+                "lng": 100.7501,
+                "category": null
+              }
             }
           ]
         }
@@ -237,15 +617,13 @@
           "trip_id": 1,
           "day_id": 101,
           "end_day_id": null,
-          "title": "NH 174 AMS to HND",
+          "title": "KL 861 Amsterdam to Haneda",
           "type": "flight",
           "status": "confirmed",
           "reservation_time": "2026-04-10T06:20:00",
           "confirmation_number": "XK4Q2P",
           "accommodation_id": null,
           "day_positions": null,
-          "day_number": 1,
-          "place_name": null,
           "endpoints": [],
           "travelers": []
         },
@@ -257,63 +635,68 @@
           "title": "Hokuriku Shinkansen Kagayaki 509",
           "type": "train",
           "status": "confirmed",
-          "reservation_time": "2026-04-14T16:00:00",
+          "reservation_time": "2026-04-14T16:04:00",
           "confirmation_number": "JR-88120",
           "accommodation_id": null,
-          "day_positions": { "105": 1.5 },
-          "day_number": 5,
-          "place_name": null,
+          "day_positions": null,
           "endpoints": [],
           "travelers": []
         },
         {
           "id": 503,
           "trip_id": 1,
-          "day_id": 110,
-          "end_day_id": null,
-          "title": "Tea ceremony",
-          "type": "activity",
-          "status": "pending",
-          "reservation_time": "2026-04-19T14:00:00",
-          "confirmation_number": null,
+          "day_id": 109,
+          "end_day_id": 110,
+          "title": "Thunderbird 16 Kanazawa to Kyoto",
+          "type": "train",
+          "status": "confirmed",
+          "reservation_time": "2026-04-18T11:12:00",
+          "confirmation_number": "JR-44017",
           "accommodation_id": null,
           "day_positions": null,
-          "day_number": 10,
-          "place_name": "Gion",
           "endpoints": [],
           "travelers": []
         },
         {
           "id": 504,
           "trip_id": 1,
-          "day_id": null,
-          "end_day_id": null,
-          "title": "Rail pass exchange (day not decided)",
-          "type": "other",
-          "status": "pending",
-          "reservation_time": null,
-          "confirmation_number": null,
+          "day_id": 113,
+          "end_day_id": 114,
+          "title": "TG 623 Osaka to Bangkok",
+          "type": "flight",
+          "status": "confirmed",
+          "reservation_time": "2026-04-22T23:45:00",
+          "confirmation_number": "TG7781Z",
           "accommodation_id": null,
           "day_positions": null,
-          "day_number": null,
-          "place_name": null,
           "endpoints": [],
           "travelers": []
         },
         {
           "id": 505,
           "trip_id": 1,
-          "day_id": 101,
-          "end_day_id": 105,
-          "title": "Hotel Gracery Shinjuku",
-          "type": "hotel",
-          "status": "confirmed",
-          "reservation_time": "2026-04-10T15:00:00",
-          "confirmation_number": "HG-77213",
-          "accommodation_id": 601,
+          "day_id": 111,
+          "end_day_id": null,
+          "title": "Tea ceremony in Gion",
+          "type": "activity",
+          "status": "pending",
+          "reservation_time": "2026-04-20T15:00:00",
+          "accommodation_id": null,
           "day_positions": null,
-          "day_number": 1,
-          "place_name": "Hotel Gracery Shinjuku",
+          "endpoints": [],
+          "travelers": []
+        },
+        {
+          "id": 506,
+          "trip_id": 1,
+          "day_id": null,
+          "end_day_id": null,
+          "title": "JR Pass exchange (day not decided yet)",
+          "type": "other",
+          "status": "pending",
+          "reservation_time": null,
+          "accommodation_id": null,
+          "day_positions": null,
           "endpoints": [],
           "travelers": []
         }
@@ -322,15 +705,13 @@
         {
           "id": 601,
           "trip_id": 1,
-          "place_id": 215,
+          "place_id": 900,
           "start_day_id": 101,
           "end_day_id": 105,
           "check_in": "15:00",
           "check_out": "11:00",
           "confirmation": "HG-77213",
-          "notes": null,
           "place_name": "Hotel Gracery Shinjuku",
-          "place_address": "1-19-1 Kabukicho, Shinjuku",
           "place_lat": 35.6955,
           "place_lng": 139.7017,
           "reservation_title": "Hotel Gracery Shinjuku"
@@ -338,15 +719,13 @@
         {
           "id": 601,
           "trip_id": 1,
-          "place_id": 215,
+          "place_id": 900,
           "start_day_id": 101,
           "end_day_id": 105,
           "check_in": "15:00",
           "check_out": "11:00",
           "confirmation": "HG-77213",
-          "notes": null,
           "place_name": "Hotel Gracery Shinjuku",
-          "place_address": "1-19-1 Kabukicho, Shinjuku",
           "place_lat": 35.6955,
           "place_lng": 139.7017,
           "reservation_title": "Late checkout add-on"
@@ -354,15 +733,13 @@
         {
           "id": 602,
           "trip_id": 1,
-          "place_id": 216,
-          "start_day_id": 105,
+          "place_id": 901,
+          "start_day_id": 106,
           "end_day_id": 109,
           "check_in": "16:00",
           "check_out": "10:00",
           "confirmation": "KZ-1180",
-          "notes": null,
-          "place_name": "Kanazawa Machiya",
-          "place_address": "Higashiyama, Kanazawa",
+          "place_name": "Kanazawa Machiya Ryokan",
           "place_lat": 36.5709,
           "place_lng": 136.6667,
           "reservation_title": null
@@ -370,17 +747,29 @@
         {
           "id": 603,
           "trip_id": 1,
-          "place_id": 217,
-          "start_day_id": 109,
-          "end_day_id": 112,
+          "place_id": 902,
+          "start_day_id": 110,
+          "end_day_id": 113,
           "check_in": "15:00",
           "check_out": "11:00",
           "confirmation": "KY-4402",
-          "notes": null,
-          "place_name": "Kyoto Ryokan",
-          "place_address": "Nakagyo, Kyoto",
-          "place_lat": 35.0116,
-          "place_lng": 135.7681,
+          "place_name": "Kyoto Ryokan Gion",
+          "place_lat": 35.0037,
+          "place_lng": 135.7752,
+          "reservation_title": null
+        },
+        {
+          "id": 604,
+          "trip_id": 1,
+          "place_id": 903,
+          "start_day_id": 114,
+          "end_day_id": 118,
+          "check_in": "14:00",
+          "check_out": "12:00",
+          "confirmation": "BK-30918",
+          "place_name": "Riverside Bangkok Hotel",
+          "place_lat": 13.7245,
+          "place_lng": 100.493,
           "reservation_title": null
         }
       ]
