@@ -1,0 +1,28 @@
+{
+  "id": "trip-segments",
+  "name": "Trip Segments",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "type": "trip-page",
+  "trek": ">=3.4.0 <4.0.0",
+  "author": "Renzo Beux",
+  "description": "Split long multi-destination trips into colour-coded legs, with a per-leg view of the schedule, bookings and stays.",
+  "license": "MIT",
+  "icon": "Route",
+  "tags": ["planning", "itinerary", "multi-destination"],
+  "nativeModules": false,
+  "capabilities": {
+    "tripPage": {
+      "position": 1
+    }
+  },
+  "permissions": [
+    "db:own",
+    "db:read:trips",
+    "ws:broadcast:trip",
+    "hook:day-schedule-provider",
+    "hook:map-layer-provider",
+    "hook:pdf-section-provider",
+    "hook:trip-card-provider"
+  ]
+}

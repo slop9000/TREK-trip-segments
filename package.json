@@ -1,0 +1,30 @@
+{
+  "name": "trek-plugin-trip-segments",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Split long multi-destination TREK trips into colour-coded legs.",
+  "license": "MIT",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.client.json",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run test && npm run build",
+    "dev": "node build.mjs && node scripts/sdk.mjs dev",
+    "build:daytint": "node build.mjs --day-tint",
+    "validate": "node scripts/sdk.mjs validate",
+    "status": "node scripts/sdk.mjs status",
+    "shot": "node scripts/sdk.mjs shot",
+    "pack": "node scripts/sdk.mjs pack",
+    "verify": "node build.mjs && git diff --exit-code -- server client"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "esbuild": "^0.25.0",
+    "jsdom": "^29.1.1",
+    "playwright": "^1.62.0",
+    "trek-plugin-sdk": "^1.5.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
