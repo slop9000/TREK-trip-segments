@@ -1,11 +1,10 @@
 import { button, clear, el } from '../dom';
-import { PALETTE, hexForTone } from '../../src/shared/palette';
+import { PALETTE, normalizeHexColor } from '../../src/shared/palette';
 import { MAX_SEGMENTS_PER_TRIP, NAME_MAX } from '../../src/shared/limits';
 import { shortDate } from '../../src/shared/format';
 import { validateSegmentInput } from '../../src/shared/validate';
 import type { IssueCode } from '../../src/shared/validate';
 import type { OverviewDay, OverviewPayload, SegmentInput } from '../../src/shared/types';
-import type { Tone } from '../../src/shared/host-types';
 import type { EditorState } from '../store';
 
 /**
@@ -19,7 +18,7 @@ import type { EditorState } from '../store';
 const ISSUE_TEXT: Record<IssueCode, string> = {
   name_required: 'Give this leg a name.',
   name_too_long: `Keep the name under ${NAME_MAX} characters.`,
-  tone_invalid: 'Pick a colour.',
+  color_invalid: 'Pick a valid colour.',
   range_invalid: 'The last day has to be on or after the first day.',
   range_out_of_bounds: 'That is past the last day of the trip.',
   overlap: 'Those days already belong to another leg.',
@@ -88,7 +87,7 @@ export function renderEditor(
   const editingId = editor.id;
   const isCreate = editor.mode === 'create';
 
-  let tone: Tone = editor.draft.tone;
+  let color = normalizeHexColor(editor.draft.color) ?? PALETTE[0]!.hex;
 
   const nameInput = el('input', {
     class: 'trek-input',
@@ -102,23 +101,42 @@ export function renderEditor(
   const swatches = el('div', { class: 'trek-cluster seg-swatches' });
   const swatchButtons = PALETTE.map((swatch) => {
     const node = el('button', {
-      class: `seg-swatch${swatch.tone === tone ? ' seg-swatch--on' : ''}`,
+      class: `seg-swatch${swatch.hex === color ? ' seg-swatch--on' : ''}`,
       title: swatch.label,
-      attrs: { type: 'button', 'aria-label': swatch.label },
+      attrs: { type: 'button', 'aria-label': swatch.label, 'aria-pressed': String(swatch.hex === color) },
       style: { backgroundColor: swatch.hex },
       on: {
         click: () => {
-          tone = swatch.tone;
-          for (const [i, b] of swatchButtons.entries()) {
-            b.classList.toggle('seg-swatch--on', PALETTE[i]!.tone === tone);
-          }
-          revalidate();
+          selectColor(swatch.hex);
         },
       },
     });
     swatches.append(node);
     return node;
   });
+
+  const customInput = el('input', {
+    class: 'seg-color-picker',
+    attrs: { type: 'color', 'aria-label': 'Custom colour', title: 'Choose a custom colour' },
+  });
+  customInput.value = color;
+  const colorValue = el('span', { class: 'trek-faint seg-color-value', text: color });
+
+  function selectColor(next: string): void {
+    const normalized = normalizeHexColor(next);
+    if (!normalized) return;
+    color = normalized;
+    customInput.value = color;
+    colorValue.textContent = color;
+    for (const [i, b] of swatchButtons.entries()) {
+      const selected = PALETTE[i]!.hex === color;
+      b.classList.toggle('seg-swatch--on', selected);
+      b.setAttribute('aria-pressed', String(selected));
+    }
+    revalidate();
+  }
+
+  customInput.addEventListener('input', () => selectColor(customInput.value));
 
   const issuesNode = el('p', { class: 'seg-issues' });
   const saveButton = button(isCreate ? 'Add leg' : 'Save', {
@@ -129,7 +147,7 @@ export function renderEditor(
   function read(): SegmentInput {
     return {
       name: nameInput.value,
-      tone,
+      color,
       start_day: Number(startSelect.value),
       end_day: Number(endSelect.value),
     };
@@ -168,6 +186,11 @@ export function renderEditor(
 
       el('label', { class: 'trek-label', text: 'Colour' }),
       swatches,
+      el('div', { class: 'seg-custom-color' }, [
+        customInput,
+        el('span', { text: 'Custom' }),
+        colorValue,
+      ]),
 
       el('div', { class: 'seg-range' }, [
         el('div', { class: 'seg-range-field' }, [el('label', { class: 'trek-label', text: 'First day' }), startSelect]),
@@ -186,9 +209,4 @@ export function renderEditor(
   revalidate();
   nameInput.focus();
   nameInput.select();
-}
-
-/** Colour preview for a tone, used by the overview list. */
-export function toneHex(tone: Tone): string {
-  return hexForTone(tone);
 }

@@ -259,37 +259,62 @@
   });
 
   // src/shared/palette.ts
-  function isTone(value) {
-    return value === "default" || value === "success" || value === "warn" || value === "danger";
+  function isHexColor(value) {
+    return typeof value === "string" && HEX_PATTERN.test(value);
   }
-  function hexForTone(tone) {
-    return HEX_BY_TONE.get(tone) ?? "#4F46E5";
+  function normalizeHexColor(value) {
+    return isHexColor(value) ? value.toUpperCase() : null;
+  }
+  function rgb(hex) {
+    const n = Number.parseInt(hex.slice(1), 16);
+    return [n >> 16 & 255, n >> 8 & 255, n & 255];
+  }
+  function toneForColor(color) {
+    const normalized = normalizeHexColor(color) ?? HEX_BY_TONE.default;
+    const [r, g, b] = rgb(normalized);
+    let best = "default";
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (const tone of ["default", "success", "warn", "danger"]) {
+      const [tr, tg, tb] = rgb(HEX_BY_TONE[tone]);
+      const distance = (r - tr) ** 2 + (g - tg) ** 2 + (b - tb) ** 2;
+      if (distance < bestDistance) {
+        best = tone;
+        bestDistance = distance;
+      }
+    }
+    return best;
   }
   function toneChipClass(tone) {
     return tone === "warn" ? "trek-chip--warning" : `trek-chip--${tone}`;
   }
-  function toneFill(tone, alpha) {
-    const hex = hexForTone(tone);
-    const n = Number.parseInt(hex.slice(1), 16);
-    const r = n >> 16 & 255;
-    const g = n >> 8 & 255;
-    const b = n & 255;
+  function colorFill(color, alpha) {
+    const [r, g, b] = rgb(normalizeHexColor(color) ?? HEX_BY_TONE.default);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
-  function suggestTone(existingCount) {
-    return PALETTE[existingCount % PALETTE.length].tone;
+  function suggestColor(existingCount) {
+    return PALETTE[existingCount % PALETTE.length].hex;
   }
-  var PALETTE, HEX_BY_TONE;
+  var PALETTE, HEX_PATTERN, HEX_BY_TONE;
   var init_palette = __esm({
     "src/shared/palette.ts"() {
       "use strict";
       PALETTE = [
-        { tone: "default", hex: "#4F46E5", label: "Indigo" },
-        { tone: "success", hex: "#10b981", label: "Emerald" },
-        { tone: "warn", hex: "#f59e0b", label: "Amber" },
-        { tone: "danger", hex: "#ef4444", label: "Red" }
+        { hex: "#4F46E5", label: "Indigo" },
+        { hex: "#10B981", label: "Emerald" },
+        { hex: "#F59E0B", label: "Amber" },
+        { hex: "#EF4444", label: "Red" },
+        { hex: "#0EA5E9", label: "Sky" },
+        { hex: "#8B5CF6", label: "Violet" },
+        { hex: "#14B8A6", label: "Teal" },
+        { hex: "#EC4899", label: "Pink" }
       ];
-      HEX_BY_TONE = new Map(PALETTE.map((s) => [s.tone, s.hex]));
+      HEX_PATTERN = /^#[0-9a-fA-F]{6}$/;
+      HEX_BY_TONE = {
+        default: "#4F46E5",
+        success: "#10B981",
+        warn: "#F59E0B",
+        danger: "#EF4444"
+      };
     }
   });
 
@@ -427,7 +452,7 @@
       ].filter(Boolean).join(" "),
       title,
       ...segment ? { attrs: { type: "button", "aria-label": title } } : {},
-      ...segment ? { style: { backgroundColor: toneFill(segment.tone, 0.18), borderColor: hexForTone(segment.tone) } } : {},
+      ...segment ? { style: { backgroundColor: colorFill(segment.color, 0.18), borderColor: segment.color } } : {},
       ...segment ? { on: { click: () => onOpen(segment.id) } } : {}
     }, [
       el("span", { class: "seg-cal-date", text: String(cell.date) }),
@@ -450,7 +475,7 @@
           title: `Open ${view.name}`,
           on: { click: () => onOpen(view.id) }
         }, [
-          el("span", { class: "seg-legend-dot", style: { backgroundColor: hexForTone(view.tone) } }),
+          el("span", { class: "seg-legend-dot", style: { backgroundColor: view.color } }),
           el("span", { text: view.name }),
           el("span", { class: "trek-faint", text: `${view.effLength}d` })
         ])
@@ -539,7 +564,7 @@
     const name = normalizeName(input.name);
     if (name.length === 0) issues.push("name_required");
     else if (name.length > NAME_MAX) issues.push("name_too_long");
-    if (!isTone(input.tone)) issues.push("tone_invalid");
+    if (!isHexColor(input.color)) issues.push("color_invalid");
     const start = input.start_day;
     const end = input.end_day;
     const rangeWellFormed = Number.isInteger(start) && Number.isInteger(end) && start >= 1 && end >= start && end <= MAX_TRIP_DAYS;
@@ -595,7 +620,7 @@
     clear(node);
     const editingId = editor.id;
     const isCreate = editor.mode === "create";
-    let tone = editor.draft.tone;
+    let color = normalizeHexColor(editor.draft.color) ?? PALETTE[0].hex;
     const nameInput = el("input", {
       class: "trek-input",
       attrs: { type: "text", maxlength: String(NAME_MAX), placeholder: "Tokyo" }
@@ -606,23 +631,39 @@
     const swatches = el("div", { class: "trek-cluster seg-swatches" });
     const swatchButtons = PALETTE.map((swatch) => {
       const node2 = el("button", {
-        class: `seg-swatch${swatch.tone === tone ? " seg-swatch--on" : ""}`,
+        class: `seg-swatch${swatch.hex === color ? " seg-swatch--on" : ""}`,
         title: swatch.label,
-        attrs: { type: "button", "aria-label": swatch.label },
+        attrs: { type: "button", "aria-label": swatch.label, "aria-pressed": String(swatch.hex === color) },
         style: { backgroundColor: swatch.hex },
         on: {
           click: () => {
-            tone = swatch.tone;
-            for (const [i, b] of swatchButtons.entries()) {
-              b.classList.toggle("seg-swatch--on", PALETTE[i].tone === tone);
-            }
-            revalidate();
+            selectColor(swatch.hex);
           }
         }
       });
       swatches.append(node2);
       return node2;
     });
+    const customInput = el("input", {
+      class: "seg-color-picker",
+      attrs: { type: "color", "aria-label": "Custom colour", title: "Choose a custom colour" }
+    });
+    customInput.value = color;
+    const colorValue = el("span", { class: "trek-faint seg-color-value", text: color });
+    function selectColor(next) {
+      const normalized = normalizeHexColor(next);
+      if (!normalized) return;
+      color = normalized;
+      customInput.value = color;
+      colorValue.textContent = color;
+      for (const [i, b] of swatchButtons.entries()) {
+        const selected = PALETTE[i].hex === color;
+        b.classList.toggle("seg-swatch--on", selected);
+        b.setAttribute("aria-pressed", String(selected));
+      }
+      revalidate();
+    }
+    customInput.addEventListener("input", () => selectColor(customInput.value));
     const issuesNode = el("p", { class: "seg-issues" });
     const saveButton = button(isCreate ? "Add leg" : "Save", {
       variant: "primary",
@@ -631,7 +672,7 @@
     function read() {
       return {
         name: nameInput.value,
-        tone,
+        color,
         start_day: Number(startSelect.value),
         end_day: Number(endSelect.value)
       };
@@ -661,6 +702,11 @@
         nameInput,
         el("label", { class: "trek-label", text: "Colour" }),
         swatches,
+        el("div", { class: "seg-custom-color" }, [
+          customInput,
+          el("span", { text: "Custom" }),
+          colorValue
+        ]),
         el("div", { class: "seg-range" }, [
           el("div", { class: "seg-range-field" }, [el("label", { class: "trek-label", text: "First day" }), startSelect]),
           el("div", { class: "seg-range-field" }, [el("label", { class: "trek-label", text: "Last day" }), endSelect])
@@ -688,7 +734,7 @@
       ISSUE_TEXT = {
         name_required: "Give this leg a name.",
         name_too_long: `Keep the name under ${NAME_MAX} characters.`,
-        tone_invalid: "Pick a colour.",
+        color_invalid: "Pick a valid colour.",
         range_invalid: "The last day has to be on or after the first day.",
         range_out_of_bounds: "That is past the last day of the trip.",
         overlap: "Those days already belong to another leg.",
@@ -793,7 +839,7 @@
     const range = segment.effStart === null || segment.effEnd === null ? "This leg is outside the trip." : segmentRangeLabel(segment.effStart, segment.effEnd, segment.startDate, segment.endDate);
     node.append(
       el("div", { class: "seg-panel-head" }, [
-        el("span", { class: "seg-panel-rail", style: { backgroundColor: hexForTone(segment.tone) } }),
+        el("span", { class: "seg-panel-rail", style: { backgroundColor: segment.color } }),
         el("div", { class: "seg-panel-titles" }, [
           el("span", { class: "trek-title", text: segment.name }),
           el("span", { class: "trek-faint", text: range })
@@ -858,11 +904,11 @@
       },
       [
         // A colour rail rather than a dot alone: it ties the card to its calendar cells.
-        el("span", { class: "seg-card-rail", style: { backgroundColor: hexForTone(view.tone) } }),
+        el("span", { class: "seg-card-rail", style: { backgroundColor: view.color } }),
         el("div", { class: "seg-card-top" }, [
           el("div", { class: "seg-card-main" }, [
             el("div", { class: "seg-card-head" }, [
-              toneDot(hexForTone(view.tone)),
+              toneDot(view.color),
               el("span", { class: "trek-title seg-card-name", text: view.name }),
               statusChip(view)
             ]),
@@ -952,7 +998,7 @@
       if (view.effStart === null || view.effEnd === null) continue;
       bars.push({
         id: view.id,
-        hex: hexForTone(view.tone),
+        hex: view.color,
         leftPct: (view.effStart - 1) / dayCount * 100,
         widthPct: view.effLength / dayCount * 100,
         label: `${view.name} - ${segmentRangeLabel(view.effStart, view.effEnd, view.startDate, view.endDate)}`,
@@ -1003,7 +1049,6 @@
     "client-src/views/strip.ts"() {
       "use strict";
       init_dom();
-      init_palette();
       init_format();
     }
   });
@@ -1202,10 +1247,10 @@
         const gap = data.uncovered[0];
         const start = gap ? gap[0] : 1;
         const end = gap ? gap[1] : Math.max(start, Math.min(data.dayCount, start));
-        return { name: "", tone: suggestTone(data.segments.length), start_day: start, end_day: end };
+        return { name: "", color: suggestColor(data.segments.length), start_day: start, end_day: end };
       }
       function draftFrom(view) {
-        return { name: view.name, tone: view.tone, start_day: view.start_day, end_day: view.end_day };
+        return { name: view.name, color: view.color, start_day: view.start_day, end_day: view.end_day };
       }
       var actions2 = {
         onCreate() {
@@ -1264,6 +1309,7 @@
               } else {
                 rows.push({
                   ...input,
+                  tone: toneForColor(input.color),
                   id: -Date.now(),
                   trip_id: tripId,
                   created_at: "",

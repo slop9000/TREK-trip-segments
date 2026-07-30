@@ -1,5 +1,4 @@
 import { el, clear } from '../dom';
-import { hexForTone } from '../../src/shared/palette';
 import { segmentRangeLabel } from '../../src/shared/format';
 import type { SegmentView } from '../../src/shared/types';
 
@@ -28,7 +27,7 @@ export function stripGeometry(views: readonly SegmentView[], dayCount: number): 
     if (view.effStart === null || view.effEnd === null) continue;
     bars.push({
       id: view.id,
-      hex: hexForTone(view.tone),
+      hex: view.color,
       leftPct: ((view.effStart - 1) / dayCount) * 100,
       widthPct: (view.effLength / dayCount) * 100,
       label: `${view.name} - ${segmentRangeLabel(view.effStart, view.effEnd, view.startDate, view.endDate)}`,

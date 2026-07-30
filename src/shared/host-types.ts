@@ -16,7 +16,7 @@
  * caps are written down next to the fields they constrain.
  */
 
-/** server/src/nest/plugins/*.controller.ts — the only colour knob any hook has. */
+/** Legacy semantic colour used by host surfaces without a hex channel. */
 export type Tone = 'default' | 'success' | 'warn' | 'danger';
 
 export const TONES: readonly Tone[] = ['default', 'success', 'warn', 'danger'];
@@ -343,12 +343,17 @@ export interface DayTintContribution {
    * with `default`, so an entry can never paint nothing.
    */
   tone?: Tone;
+  /** Arbitrary colour shorthand. Wins over `tone` when both are usable. */
+  color?: string;
   /** The day-number badge, and the mobile day chip. */
   badgeTone?: Tone;
+  badgeColor?: string;
   /** The day header row — number, title, date, cost. */
   headerTone?: Tone;
+  headerColor?: string;
   /** The expanded activity list: places, bookings and transport. */
   activityTone?: Tone;
+  activityColor?: string;
   /** Optional tooltip, ≤60 chars, emoji-stripped host-side. */
   label?: string;
 }

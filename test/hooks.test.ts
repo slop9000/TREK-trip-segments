@@ -25,6 +25,7 @@ const row = (id: number, start: number, end: number, name = `Leg ${id}`): Segmen
   id,
   trip_id: 1,
   name,
+  color: '#4F46E5',
   tone: 'default',
   start_day: start,
   end_day: end,
@@ -344,35 +345,37 @@ describe('dayTintProvider', () => {
 
     expect(tints).toHaveLength(3);
     expect(tints.map((t) => t.dayId)).toEqual([1000, 1001, 1002]);
-    expect(tints.every((t) => t.headerTone === 'default' && t.label === 'Tokyo')).toBe(true);
+    expect(tints.every((t) => t.headerColor === '#4F46E5' && t.label === 'Tokyo')).toBe(true);
   });
 
   /**
-   * Header and badge, never the activity list. Sending `tone` would be the
+   * Header and badge, never the activity list. Sending `color` would be the
    * shorthand for "every region" and would wash the activity list too, so its
    * absence is the feature, not an omission.
    */
   it('tints the header and badge, leaving the activity list alone', () => {
     const [tint] = buildTints(resolveAll([row(1, 1, 1, 'Tokyo')], idx), idx);
 
-    expect(tint?.headerTone).toBe('default');
-    expect(tint?.badgeTone).toBe('default');
+    expect(tint?.headerColor).toBe('#4F46E5');
+    expect(tint?.badgeColor).toBe('#4F46E5');
+    expect(tint?.color).toBeUndefined();
     expect(tint?.tone).toBeUndefined();
+    expect(tint?.activityColor).toBeUndefined();
     expect(tint?.activityTone).toBeUndefined();
   });
 
   it('uses one leg colour across both tinted regions', () => {
-    const views = resolveAll([{ ...row(1, 1, 2), tone: 'warn' as const }], idx);
+    const views = resolveAll([{ ...row(1, 1, 2), color: '#123ABC' }], idx);
     for (const tint of buildTints(views, idx)) {
-      expect(tint.headerTone).toBe('warn');
-      expect(tint.badgeTone).toBe('warn');
+      expect(tint.headerColor).toBe('#123ABC');
+      expect(tint.badgeColor).toBe('#123ABC');
     }
   });
 
-  it('gives each leg its own tone', () => {
-    const views = resolveAll([{ ...row(1, 1, 2), tone: 'success' as const }, { ...row(2, 3, 4), tone: 'danger' as const }], idx);
-    expect(buildTints(views, idx).map((t) => t.headerTone)).toEqual(['success', 'success', 'danger', 'danger']);
-    expect(buildTints(views, idx).map((t) => t.badgeTone)).toEqual(['success', 'success', 'danger', 'danger']);
+  it('gives each leg its exact colour', () => {
+    const views = resolveAll([{ ...row(1, 1, 2), color: '#0EA5E9' }, { ...row(2, 3, 4), color: '#EC4899' }], idx);
+    expect(buildTints(views, idx).map((t) => t.headerColor)).toEqual(['#0EA5E9', '#0EA5E9', '#EC4899', '#EC4899']);
+    expect(buildTints(views, idx).map((t) => t.badgeColor)).toEqual(['#0EA5E9', '#0EA5E9', '#EC4899', '#EC4899']);
   });
 
   it('tints nothing for a leg that fell outside the trip', () => {

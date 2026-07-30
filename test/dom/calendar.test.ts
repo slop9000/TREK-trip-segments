@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildMonths, renderCalendar, renderLegend, segmentByPosition } from '../../client-src/views/calendar';
-import { toneFill } from '../../src/shared/palette';
+import { colorFill, hexForTone } from '../../src/shared/palette';
 import type { OverviewDay, OverviewPayload, SegmentView } from '../../src/shared/types';
 import type { Tone } from '../../src/shared/host-types';
 
@@ -10,6 +10,7 @@ function view(id: number, start: number, end: number, tone: Tone = 'default', na
     id,
     trip_id: 1,
     name,
+    color: hexForTone(tone),
     tone,
     start_day: start,
     end_day: end,
@@ -118,7 +119,7 @@ describe('calendar rendering', () => {
 
     const covered = node.querySelectorAll('.seg-cal-cell--in:not(.seg-cal-cell--bare)');
     expect(covered).toHaveLength(5);
-    expect((covered[0] as HTMLElement).style.backgroundColor).toBe(toneFill('success', 0.18));
+    expect((covered[0] as HTMLElement).style.backgroundColor).toBe(colorFill('#10B981', 0.18));
 
     (covered[0] as HTMLButtonElement).click();
     expect(onOpen).toHaveBeenCalledWith(1);

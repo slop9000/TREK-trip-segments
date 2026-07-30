@@ -32,9 +32,9 @@ have yet, and a plugin that asked for a permission its host did not recognise wo
 at all, so this release does not ask. Nothing breaks in the meantime; those two surfaces simply stay
 empty until a later version of the plugin turns them on.
 
-Colours are limited to four on purpose. TREK's map, day plan and card surfaces accept a fixed set of
-four tones rather than arbitrary colours, so the palette is exactly those four. A leg therefore looks
-identical everywhere it appears, instead of being one colour in the tab and a different one on the map.
+Choose from eight presets or use the custom colour picker. TREK's day-tint provider accepts the exact
+hex colour, so day headers and badges match the Segments tab. Map lines and schedule banners still use
+the closest of TREK's four semantic tones until those provider contracts also accept arbitrary colours.
 
 ## Screenshots
 

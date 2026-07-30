@@ -5,6 +5,9 @@ export interface SegmentRow {
   id: number;
   trip_id: number;
   name: string;
+  /** Canonical #RRGGBB used by this plugin and the day-tint provider. */
+  color: string;
+  /** Nearest legacy host tone for map layers and schedule banners. */
   tone: Tone;
   start_day: number;
   end_day: number;
@@ -15,7 +18,7 @@ export interface SegmentRow {
 /** What the user is editing, before it has an id. */
 export interface SegmentInput {
   name: string;
-  tone: Tone;
+  color: string;
   start_day: number;
   end_day: number;
 }

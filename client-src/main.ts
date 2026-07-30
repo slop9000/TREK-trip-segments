@@ -14,7 +14,7 @@ import {
 import { mountShell, renderShell } from './views/shell';
 import { resetDetailExpansion } from './views/detail';
 import { resolveAll, uncoveredRanges } from '../src/shared/drift';
-import { suggestTone } from '../src/shared/palette';
+import { suggestColor, toneForColor } from '../src/shared/palette';
 import type { DayIndex, OverviewPayload, SegmentInput, SegmentRow, SegmentView } from '../src/shared/types';
 import type { ShellActions } from './views/shell';
 
@@ -48,11 +48,11 @@ function defaultDraft(data: OverviewPayload): SegmentInput {
   const gap = data.uncovered[0];
   const start = gap ? gap[0] : 1;
   const end = gap ? gap[1] : Math.max(start, Math.min(data.dayCount, start));
-  return { name: '', tone: suggestTone(data.segments.length), start_day: start, end_day: end };
+  return { name: '', color: suggestColor(data.segments.length), start_day: start, end_day: end };
 }
 
 function draftFrom(view: SegmentView): SegmentInput {
-  return { name: view.name, tone: view.tone, start_day: view.start_day, end_day: view.end_day };
+  return { name: view.name, color: view.color, start_day: view.start_day, end_day: view.end_day };
 }
 
 const actions: ShellActions = {
@@ -127,6 +127,7 @@ const actions: ShellActions = {
           // arrives; the reconcile that follows replaces it either way.
           rows.push({
             ...input,
+            tone: toneForColor(input.color),
             id: -Date.now(),
             trip_id: tripId,
             created_at: '',

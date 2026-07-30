@@ -1,6 +1,6 @@
 import { buildDayIndex, resolveSegment } from '../shared/drift';
 import { MAX_SEGMENTS_PER_TRIP } from '../shared/limits';
-import { isTone } from '../shared/palette';
+import { hexForTone, isTone, normalizeHexColor } from '../shared/palette';
 import { normalizeName, validateSegmentInput } from '../shared/validate';
 import { buildDetail, buildOverview, withTrip } from './read-model';
 import { countSegments, deleteSegment, getSegment, insertSegmentIfFree, updateSegmentIfFree } from './repo';
@@ -39,8 +39,15 @@ function parseSegmentInput(body: Record<string, unknown>): ParsedInput {
   const rawName = body['name'];
   if (typeof rawName !== 'string') missing.push('name');
 
-  const rawTone = body['tone'];
-  if (!isTone(rawTone)) missing.push('tone');
+  const rawColor = body['color'];
+  const rawTone = body['tone']; // accepted for backward compatibility
+  const color =
+    rawColor === undefined
+      ? isTone(rawTone)
+        ? hexForTone(rawTone)
+        : null
+      : normalizeHexColor(rawColor);
+  if (!color) missing.push('color');
 
   const startDay = bodyInt(body, 'start_day');
   if (startDay === null) missing.push('start_day');
@@ -51,7 +58,7 @@ function parseSegmentInput(body: Record<string, unknown>): ParsedInput {
   return {
     input: {
       name: normalizeName(rawName),
-      tone: isTone(rawTone) ? rawTone : 'default',
+      color: color ?? hexForTone('default'),
       start_day: startDay ?? 0,
       end_day: endDay ?? 0,
     },

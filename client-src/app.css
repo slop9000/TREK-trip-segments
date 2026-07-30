@@ -207,6 +207,28 @@ body {
   transform: scale(1.1);
 }
 
+.seg-custom-color {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.seg-color-picker {
+  width: 36px;
+  height: 30px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm, 8px);
+  padding: 2px;
+  background: var(--bg-card);
+  cursor: pointer;
+}
+
+.seg-color-value {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+}
+
 .seg-issues {
   margin: 0;
   min-height: 1em;

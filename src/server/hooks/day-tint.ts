@@ -32,7 +32,7 @@ export function buildTints(views: readonly SegmentView[], idx: DayIndex): DayTin
       const dayId = idx.dayIdByPos[pos - 1];
       if (dayId === undefined) continue;
 
-      // Header and badge, but deliberately NOT the `tone` shorthand — that would
+      // Header and badge, but deliberately NOT the `color` shorthand — that would
       // also wash the activity list.
       //
       // A leg is context, not content. The header carries the day number, title
@@ -41,7 +41,7 @@ export function buildTints(views: readonly SegmentView[], idx: DayIndex): DayTin
       // host paints at roughly twice the header's alpha (--day-tint-badge, 16%
       // light / 24% dark) so it reads at a glance. The dense list of places and
       // bookings below stays on a plain background, where it is easiest to read.
-      out.push({ dayId, headerTone: view.tone, badgeTone: view.tone, label });
+      out.push({ dayId, headerColor: view.color, badgeColor: view.color, label });
     }
   }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MIGRATION_SQL } from '../src/server/schema';
+import { COLOR_MIGRATION_SQL, MIGRATION_SQL, ensureSchema, resetSchemaMemo } from '../src/server/schema';
 import {
   SQL_COUNT,
   SQL_DELETE,
@@ -21,7 +21,7 @@ import type { SegmentInput } from '../src/shared/types';
 
 const seg = (name: string, start: number, end: number): SegmentInput => ({
   name,
-  tone: 'default',
+  color: '#4F46E5',
   start_day: start,
   end_day: end,
 });
@@ -49,6 +49,7 @@ describe('SQL safety', () => {
     SQL_INSERT_IF_FREE,
     SQL_UPDATE_IF_FREE,
     MIGRATION_SQL,
+    COLOR_MIGRATION_SQL,
     'sqlListForTrips(3)': sqlListForTrips(3),
   };
 
@@ -62,13 +63,54 @@ describe('SQL safety', () => {
   });
 });
 
+describe('colour migration', () => {
+  it('adds and backfills the colour column on a tone-only installation', async () => {
+    const ctx = realDbContext();
+    await ctx.db.exec(`
+      CREATE TABLE segments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trip_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        tone TEXT NOT NULL,
+        start_day INTEGER NOT NULL,
+        end_day INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO segments
+        (trip_id, name, tone, start_day, end_day, created_at, updated_at)
+      VALUES
+        (1, 'Legacy', 'warn', 1, 2, 'x', 'x');
+    `);
+
+    resetSchemaMemo();
+    await ensureSchema(ctx);
+    expect(await listSegments(ctx, 1)).toMatchObject([{ name: 'Legacy', color: '#F59E0B', tone: 'warn' }]);
+
+    // The dev host forgets migration ids on restart; the probe must make a
+    // second startup harmless even though the database file survives.
+    resetSchemaMemo();
+    await ensureSchema(ctx);
+    expect(await listSegments(ctx, 1)).toHaveLength(1);
+    ctx.close();
+  });
+});
+
 describe('insert guard', () => {
   it('returns the created row via RETURNING', async () => {
     const ctx = await freshDb();
     const created = await insertSegmentIfFree(ctx, 1, seg('Tokyo', 1, 5));
 
     expect(created).not.toBeNull();
-    expect(created).toMatchObject({ id: 1, trip_id: 1, name: 'Tokyo', start_day: 1, end_day: 5, tone: 'default' });
+    expect(created).toMatchObject({
+      id: 1,
+      trip_id: 1,
+      name: 'Tokyo',
+      color: '#4F46E5',
+      start_day: 1,
+      end_day: 5,
+      tone: 'default',
+    });
     expect(created?.created_at).toBeTruthy();
     ctx.close();
   });

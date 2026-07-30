@@ -1,4 +1,4 @@
-import { isTone } from './palette';
+import { isHexColor } from './palette';
 import { MAX_SEGMENTS_PER_TRIP, MAX_TRIP_DAYS, NAME_MAX } from './limits';
 import type { SegmentInput, SegmentRow } from './types';
 
@@ -14,7 +14,7 @@ import type { SegmentInput, SegmentRow } from './types';
 export type IssueCode =
   | 'name_required'
   | 'name_too_long'
-  | 'tone_invalid'
+  | 'color_invalid'
   | 'range_invalid'
   | 'range_out_of_bounds'
   | 'overlap'
@@ -70,7 +70,7 @@ export function validateSegmentInput(input: SegmentInput, opts: ValidateOptions)
   if (name.length === 0) issues.push('name_required');
   else if (name.length > NAME_MAX) issues.push('name_too_long');
 
-  if (!isTone(input.tone)) issues.push('tone_invalid');
+  if (!isHexColor(input.color)) issues.push('color_invalid');
 
   const start = input.start_day;
   const end = input.end_day;

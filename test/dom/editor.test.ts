@@ -12,6 +12,7 @@ function view(id: number, start: number, end: number, name = `Leg ${id}`): Segme
     id,
     trip_id: 1,
     name,
+    color: '#4F46E5',
     tone: 'default',
     start_day: start,
     end_day: end,
@@ -46,7 +47,7 @@ function overview(segments: SegmentView[] = []): OverviewPayload {
 
 const editorState = (over: Partial<EditorState> = {}): EditorState => ({
   mode: 'create',
-  draft: { name: '', tone: 'default', start_day: 1, end_day: 1 },
+  draft: { name: '', color: '#4F46E5', start_day: 1, end_day: 1 },
   issues: [],
   ...over,
 });
@@ -91,7 +92,7 @@ describe('editor', () => {
   });
 
   it('enables saving once the range is free and the name is filled', () => {
-    renderEditor(node, editorState({ draft: { name: '', tone: 'default', start_day: 6, end_day: 9 } }), overview([view(1, 1, 5)]), {
+    renderEditor(node, editorState({ draft: { name: '', color: '#4F46E5', start_day: 6, end_day: 9 } }), overview([view(1, 1, 5)]), {
       onSave: vi.fn(),
       onCancel: vi.fn(),
     });
@@ -110,7 +111,7 @@ describe('editor', () => {
     const onSave = vi.fn();
     renderEditor(
       node,
-      editorState({ mode: 'edit', id: 1, draft: { name: 'Tokyo', tone: 'warn', start_day: 1, end_day: 5 } }),
+      editorState({ mode: 'edit', id: 1, draft: { name: 'Tokyo', color: '#F59E0B', start_day: 1, end_day: 5 } }),
       overview([view(1, 1, 5)]),
       { onSave, onCancel: vi.fn() },
     );
@@ -119,7 +120,26 @@ describe('editor', () => {
     expect(save.disabled).toBe(false); // editing itself is not an overlap
 
     save.click();
-    expect(onSave).toHaveBeenCalledWith({ name: 'Tokyo', tone: 'warn', start_day: 1, end_day: 5 }, 1);
+    expect(onSave).toHaveBeenCalledWith({ name: 'Tokyo', color: '#F59E0B', start_day: 1, end_day: 5 }, 1);
+  });
+
+  it('accepts a custom picker colour and canonicalises it before save', () => {
+    const onSave = vi.fn();
+    renderEditor(
+      node,
+      editorState({ draft: { name: 'Custom leg', color: '#4F46E5', start_day: 1, end_day: 2 } }),
+      overview(),
+      { onSave, onCancel: vi.fn() },
+    );
+
+    const picker = node.querySelector('input[type="color"]') as HTMLInputElement;
+    picker.value = '#12abef';
+    picker.dispatchEvent(new Event('input'));
+    expect(node.querySelector('.seg-color-value')?.textContent).toBe('#12ABEF');
+    expect(node.querySelectorAll('.seg-swatch--on')).toHaveLength(0);
+
+    [...node.querySelectorAll('button')].find((b) => b.textContent === 'Add leg')!.click();
+    expect(onSave).toHaveBeenCalledWith({ name: 'Custom leg', color: '#12ABEF', start_day: 1, end_day: 2 }, undefined);
   });
 
   it('never re-renders the inputs while the same editor is open, so typing is safe', () => {

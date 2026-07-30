@@ -1,4 +1,4 @@
-import { isTone } from '../shared/palette';
+import { hexForTone, isTone, normalizeHexColor, toneForColor } from '../shared/palette';
 import { MAX_SEGMENTS_PER_TRIP } from '../shared/limits';
 import type { PluginContext } from '../shared/host-types';
 import type { SegmentInput, SegmentRow } from '../shared/types';
@@ -16,7 +16,7 @@ import type { SegmentInput, SegmentRow } from '../shared/types';
  * production runs better-sqlite3, and the two disagree about `?N` and array
  * binding.
  */
-const COLUMNS = 'id, trip_id, name, tone, start_day, end_day, created_at, updated_at';
+const COLUMNS = 'id, trip_id, name, color, tone, start_day, end_day, created_at, updated_at';
 
 export const SQL_LIST = `SELECT ${COLUMNS} FROM segments WHERE trip_id = ? ORDER BY start_day ASC, id ASC`;
 
@@ -34,15 +34,15 @@ export const SQL_DELETE = 'DELETE FROM segments WHERE trip_id = ? AND id = ?';
  * returned means one of the two guards refused, which the caller turns into a
  * 409 (disambiguating with SQL_COUNT only to log the reason).
  */
-export const SQL_INSERT_IF_FREE = `INSERT INTO segments (trip_id, name, tone, start_day, end_day)
-SELECT ?, ?, ?, ?, ?
+export const SQL_INSERT_IF_FREE = `INSERT INTO segments (trip_id, name, color, tone, start_day, end_day)
+SELECT ?, ?, ?, ?, ?, ?
 WHERE (SELECT COUNT(*) FROM segments WHERE trip_id = ?) < ?
   AND NOT EXISTS (SELECT 1 FROM segments WHERE trip_id = ? AND start_day <= ? AND end_day >= ?)
 RETURNING ${COLUMNS}`;
 
 /** Same guard, minus the count, and excluding the row being edited from the overlap test. */
 export const SQL_UPDATE_IF_FREE = `UPDATE segments
-SET name = ?, tone = ?, start_day = ?, end_day = ?, updated_at = datetime('now')
+SET name = ?, color = ?, tone = ?, start_day = ?, end_day = ?, updated_at = datetime('now')
 WHERE id = ? AND trip_id = ?
   AND NOT EXISTS (SELECT 1 FROM segments WHERE trip_id = ? AND id <> ? AND start_day <= ? AND end_day >= ?)
 RETURNING ${COLUMNS}`;
@@ -54,7 +54,7 @@ RETURNING ${COLUMNS}`;
  */
 export function sqlListForTrips(count: number): string {
   const placeholders = new Array(count).fill('?').join(', ');
-  return `SELECT trip_id, name, tone, start_day, end_day FROM segments WHERE trip_id IN (${placeholders}) ORDER BY trip_id ASC, start_day ASC, id ASC`;
+  return `SELECT trip_id, name, color, tone, start_day, end_day FROM segments WHERE trip_id IN (${placeholders}) ORDER BY trip_id ASC, start_day ASC, id ASC`;
 }
 
 /** Narrow a raw sqlite row, dropping anything malformed rather than trusting it. */
@@ -69,11 +69,13 @@ export function toSegmentRow(raw: unknown): SegmentRow | null {
   if (!Number.isInteger(id) || !Number.isInteger(tripId)) return null;
   if (!Number.isInteger(startDay) || !Number.isInteger(endDay)) return null;
 
+  const tone = isTone(r['tone']) ? r['tone'] : 'default';
   return {
     id,
     trip_id: tripId,
     name: String(r['name'] ?? ''),
-    tone: isTone(r['tone']) ? r['tone'] : 'default',
+    color: normalizeHexColor(r['color']) ?? hexForTone(tone),
+    tone,
     start_day: startDay,
     end_day: endDay,
     created_at: String(r['created_at'] ?? ''),
@@ -114,7 +116,8 @@ export async function insertSegmentIfFree(
     SQL_INSERT_IF_FREE,
     tripId,
     input.name,
-    input.tone,
+    input.color,
+    toneForColor(input.color),
     input.start_day,
     input.end_day,
     tripId,
@@ -136,7 +139,8 @@ export async function updateSegmentIfFree(
   const updated = await ctx.db.query(
     SQL_UPDATE_IF_FREE,
     input.name,
-    input.tone,
+    input.color,
+    toneForColor(input.color),
     input.start_day,
     input.end_day,
     id,

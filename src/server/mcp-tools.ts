@@ -27,10 +27,10 @@ const SEGMENT_PROPERTIES = {
     maxLength: NAME_MAX,
     description: 'A short destination or leg name, such as Tokyo or Patagonia.',
   },
-  tone: {
+  color: {
     type: 'string',
-    enum: ['default', 'success', 'warn', 'danger'],
-    description: 'The TREK colour tone: default (indigo), success (emerald), warn (amber), or danger (red).',
+    pattern: '^#[0-9a-fA-F]{6}$',
+    description: 'The segment colour as #rrggbb. Presets include #4F46E5, #10B981, #F59E0B and #EF4444.',
   },
   start_day: {
     type: 'integer',
@@ -146,7 +146,7 @@ export const mcpTools: PluginMcpTool[] = [
     inputSchema: {
       type: 'object',
       properties: { tripId: TRIP_ID, ...SEGMENT_PROPERTIES },
-      required: ['tripId', 'name', 'tone', 'start_day', 'end_day'],
+      required: ['tripId', 'name', 'color', 'start_day', 'end_day'],
       additionalProperties: false,
     },
     annotations: WRITE_ANNOTATIONS,
@@ -159,7 +159,7 @@ export const mcpTools: PluginMcpTool[] = [
     inputSchema: {
       type: 'object',
       properties: { tripId: TRIP_ID, id: SEGMENT_ID, ...SEGMENT_PROPERTIES },
-      required: ['tripId', 'id', 'name', 'tone', 'start_day', 'end_day'],
+      required: ['tripId', 'id', 'name', 'color', 'start_day', 'end_day'],
       additionalProperties: false,
     },
     annotations: { ...WRITE_ANNOTATIONS, idempotentHint: true },

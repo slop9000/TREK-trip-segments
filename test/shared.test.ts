@@ -8,7 +8,15 @@ import {
   usableBookings,
 } from '../src/shared/filter';
 import { dateRangeLabel, dayRangeLabel, nightsBetween, rangesToText, safeLabel, shortDate } from '../src/shared/format';
-import { PALETTE, hexForTone, isTone, toneChipClass } from '../src/shared/palette';
+import {
+  PALETTE,
+  hexForTone,
+  isHexColor,
+  isTone,
+  normalizeHexColor,
+  toneChipClass,
+  toneForColor,
+} from '../src/shared/palette';
 import { findOverlap, normalizeName, rangesOverlap, validateSegmentInput } from '../src/shared/validate';
 import { makeDays } from './helpers';
 import type { HostAccommodation, HostDay, HostReservation } from '../src/shared/host-types';
@@ -18,6 +26,7 @@ const row = (id: number, start: number, end: number): SegmentRow => ({
   id,
   trip_id: 1,
   name: `Leg ${id}`,
+  color: '#4F46E5',
   tone: 'default',
   start_day: start,
   end_day: end,
@@ -27,7 +36,7 @@ const row = (id: number, start: number, end: number): SegmentRow => ({
 
 const input = (start: number, end: number, over: Partial<SegmentInput> = {}): SegmentInput => ({
   name: 'Leg',
-  tone: 'default',
+  color: '#4F46E5',
   start_day: start,
   end_day: end,
   ...over,
@@ -154,8 +163,9 @@ describe('validation', () => {
     expect(validateSegmentInput(input(1, 5, { name: 'x'.repeat(61) }), opts)).toContain('name_too_long');
   });
 
-  it('rejects an unknown tone', () => {
-    expect(validateSegmentInput(input(1, 5, { tone: 'neon' as never }), opts)).toContain('tone_invalid');
+  it('rejects anything other than a six-digit hex colour', () => {
+    expect(validateSegmentInput(input(1, 5, { color: 'neon' }), opts)).toContain('color_invalid');
+    expect(validateSegmentInput(input(1, 5, { color: '#12345' }), opts)).toContain('color_invalid');
   });
 
   it('rejects a backwards or non-integer range', () => {
@@ -320,13 +330,24 @@ describe('formatting', () => {
 });
 
 describe('palette', () => {
-  /** The point of the four-colour palette: the tab and the map cannot disagree. */
-  it('is exactly the host tone colours', () => {
-    expect(PALETTE.map((s) => s.tone)).toEqual(['default', 'success', 'warn', 'danger']);
+  it('offers eight distinct presets', () => {
+    expect(PALETTE).toHaveLength(8);
+    expect(new Set(PALETTE.map((s) => s.hex)).size).toBe(8);
     expect(hexForTone('default')).toBe('#4F46E5');
-    expect(hexForTone('success')).toBe('#10b981');
-    expect(hexForTone('warn')).toBe('#f59e0b');
-    expect(hexForTone('danger')).toBe('#ef4444');
+    expect(hexForTone('success')).toBe('#10B981');
+    expect(hexForTone('warn')).toBe('#F59E0B');
+    expect(hexForTone('danger')).toBe('#EF4444');
+  });
+
+  it('validates and canonicalises host-safe custom colours', () => {
+    expect(isHexColor('#a1b2C3')).toBe(true);
+    expect(normalizeHexColor('#a1b2C3')).toBe('#A1B2C3');
+    expect(isHexColor('red 50%, url(https://evil.example/x.png)')).toBe(false);
+  });
+
+  it('derives a legacy tone without changing the custom colour', () => {
+    expect(toneForColor('#0EA5E9')).toBe('success');
+    expect(toneForColor('#F97316')).toBe('warn');
   });
 
   it('recognises only real tones', () => {

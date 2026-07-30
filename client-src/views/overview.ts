@@ -1,6 +1,6 @@
 import { button, chip, clear, el, muted, toneDot } from '../dom';
 import { renderDetailPanel } from './detail';
-import { hexForTone, toneChipClass } from '../../src/shared/palette';
+import { toneChipClass } from '../../src/shared/palette';
 import { plural, rangesToText, segmentRangeLabel } from '../../src/shared/format';
 import type { DetailPayload, OverviewPayload, SegmentView } from '../../src/shared/types';
 
@@ -60,11 +60,11 @@ function segmentCard(view: SegmentView, expanded: ExpandedState, actions: Overvi
     },
     [
       // A colour rail rather than a dot alone: it ties the card to its calendar cells.
-      el('span', { class: 'seg-card-rail', style: { backgroundColor: hexForTone(view.tone) } }),
+      el('span', { class: 'seg-card-rail', style: { backgroundColor: view.color } }),
       el('div', { class: 'seg-card-top' }, [
         el('div', { class: 'seg-card-main' }, [
           el('div', { class: 'seg-card-head' }, [
-            toneDot(hexForTone(view.tone)),
+            toneDot(view.color),
             el('span', { class: 'trek-title seg-card-name', text: view.name }),
             statusChip(view),
           ]),

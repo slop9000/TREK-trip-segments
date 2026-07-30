@@ -118,16 +118,16 @@ describe('MCP tools', () => {
 
   it('uses the existing authenticated write path and broadcasts a successful MCP create', async () => {
     const created = [
-      { id: 7, trip_id: 1, name: 'Tokyo', tone: 'default', start_day: 1, end_day: 5, created_at: 'x', updated_at: 'x' },
+      { id: 7, trip_id: 1, name: 'Tokyo', color: '#123ABC', tone: 'default', start_day: 1, end_day: 5, created_at: 'x', updated_at: 'x' },
     ];
     const host = hostFor([1], { [SQL_INSERT_IF_FREE]: created });
 
     const result = await tool('create_trip_segment').handler(
-      { tripId: 1, name: 'Tokyo', tone: 'default', start_day: 1, end_day: 5 },
+      { tripId: 1, name: 'Tokyo', color: '#123abc', start_day: 1, end_day: 5 },
       host.ctx as never,
     );
 
-    expect(result).toMatchObject({ ok: true, segment: { id: 7, name: 'Tokyo' } });
+    expect(result).toMatchObject({ ok: true, segment: { id: 7, name: 'Tokyo', color: '#123ABC' } });
     expect(host.broadcasts).toHaveLength(1);
   });
 
@@ -237,7 +237,7 @@ describe('overview', () => {
 
 describe('writes', () => {
   const created = [
-    { id: 7, trip_id: 1, name: 'Tokyo', tone: 'default', start_day: 1, end_day: 5, created_at: 'x', updated_at: 'x' },
+    { id: 7, trip_id: 1, name: 'Tokyo', color: '#12ABEF', tone: 'success', start_day: 1, end_day: 5, created_at: 'x', updated_at: 'x' },
   ];
 
   it('broadcasts to the trip after a successful create', async () => {
@@ -245,7 +245,7 @@ describe('writes', () => {
     const driver = host.run(asSdkPlugin(plugin));
 
     const res = await driver.route(ROUTE('/segments', 'POST'), {
-      body: { tripId: 1, name: 'Tokyo', tone: 'default', start_day: 1, end_day: 5 },
+      body: { tripId: 1, name: 'Tokyo', color: '#12abef', start_day: 1, end_day: 5 },
     });
 
     expect(res.status).toBe(200);
@@ -265,6 +265,36 @@ describe('writes', () => {
 
     expect(res.status).toBe(409);
     expect(host.broadcasts).toHaveLength(0);
+  });
+
+  it('rejects an unsafe custom colour instead of falling back to a supplied tone', async () => {
+    const host = hostFor([1]);
+    const driver = host.run(asSdkPlugin(plugin));
+
+    const res = await driver.route(ROUTE('/segments', 'POST'), {
+      body: {
+        tripId: 1,
+        name: 'Tokyo',
+        color: 'red 50%, transparent), url(https://evil.example/x.png',
+        tone: 'default',
+        start_day: 1,
+        end_day: 5,
+      },
+    });
+
+    expect(res.status).toBe(400);
+    expect(host.broadcasts).toHaveLength(0);
+  });
+
+  it('still accepts a tone-only request from an older client', async () => {
+    const host = hostFor([1], { [SQL_INSERT_IF_FREE]: created });
+    const driver = host.run(asSdkPlugin(plugin));
+
+    const res = await driver.route(ROUTE('/segments', 'POST'), {
+      body: { tripId: 1, name: 'Tokyo', tone: 'default', start_day: 1, end_day: 5 },
+    });
+
+    expect(res.status).toBe(200);
   });
 
   it('rejects a range past the end of the trip before touching the database', async () => {

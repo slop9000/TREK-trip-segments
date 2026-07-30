@@ -1,5 +1,5 @@
 import { button, chip, clear, el, muted } from '../dom';
-import { hexForTone, toneChipClass } from '../../src/shared/palette';
+import { toneChipClass } from '../../src/shared/palette';
 import { dayRangeLabel, plural, segmentRangeLabel, shortDate } from '../../src/shared/format';
 import type { DetailBooking, DetailDay, DetailPayload, DetailStay, SegmentView } from '../../src/shared/types';
 
@@ -136,7 +136,7 @@ export function renderDetailPanel(
 
   node.append(
     el('div', { class: 'seg-panel-head' }, [
-      el('span', { class: 'seg-panel-rail', style: { backgroundColor: hexForTone(segment.tone) } }),
+      el('span', { class: 'seg-panel-rail', style: { backgroundColor: segment.color } }),
       el('div', { class: 'seg-panel-titles' }, [
         el('span', { class: 'trek-title', text: segment.name }),
         el('span', { class: 'trek-faint', text: range }),

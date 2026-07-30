@@ -26,11 +26,14 @@ module.exports = __toCommonJS(index_exports);
 
 // src/server/schema.ts
 var MIGRATION_ID = "001-segments";
+var COLOR_MIGRATION_ID = "002-segment-color";
+var SQL_PROBE_COLOR = "SELECT color FROM segments LIMIT 0";
 var MIGRATION_SQL = `
 CREATE TABLE IF NOT EXISTS segments (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   trip_id    INTEGER NOT NULL,
   name       TEXT NOT NULL,
+  color      TEXT NOT NULL DEFAULT '#4F46E5',
   tone       TEXT NOT NULL DEFAULT 'default',
   start_day  INTEGER NOT NULL,
   end_day    INTEGER NOT NULL,
@@ -42,10 +45,28 @@ CREATE TABLE IF NOT EXISTS segments (
 );
 CREATE INDEX IF NOT EXISTS idx_segments_trip ON segments(trip_id, start_day);
 `;
+var COLOR_MIGRATION_SQL = `
+ALTER TABLE segments ADD COLUMN color TEXT;
+UPDATE segments
+SET color = CASE tone
+  WHEN 'success' THEN '#10B981'
+  WHEN 'warn' THEN '#F59E0B'
+  WHEN 'danger' THEN '#EF4444'
+  ELSE '#4F46E5'
+END
+WHERE color IS NULL;
+`;
 var pending = null;
 function ensureSchema(ctx) {
   if (!pending) {
-    pending = ctx.db.migrate(MIGRATION_ID, MIGRATION_SQL).then(() => void 0).catch((err) => {
+    pending = (async () => {
+      await ctx.db.migrate(MIGRATION_ID, MIGRATION_SQL);
+      try {
+        await ctx.db.query(SQL_PROBE_COLOR);
+      } catch {
+        await ctx.db.migrate(COLOR_MIGRATION_ID, COLOR_MIGRATION_SQL);
+      }
+    })().catch((err) => {
       pending = null;
       throw err;
     });
@@ -132,15 +153,43 @@ var TRIP_CARD_NAME_PREVIEW = 3;
 var DAY_TINT_MAX = 2e3;
 
 // src/shared/palette.ts
-var PALETTE = [
-  { tone: "default", hex: "#4F46E5", label: "Indigo" },
-  { tone: "success", hex: "#10b981", label: "Emerald" },
-  { tone: "warn", hex: "#f59e0b", label: "Amber" },
-  { tone: "danger", hex: "#ef4444", label: "Red" }
-];
-var HEX_BY_TONE = new Map(PALETTE.map((s) => [s.tone, s.hex]));
+var HEX_PATTERN = /^#[0-9a-fA-F]{6}$/;
+var HEX_BY_TONE = {
+  default: "#4F46E5",
+  success: "#10B981",
+  warn: "#F59E0B",
+  danger: "#EF4444"
+};
 function isTone(value) {
   return value === "default" || value === "success" || value === "warn" || value === "danger";
+}
+function isHexColor(value) {
+  return typeof value === "string" && HEX_PATTERN.test(value);
+}
+function normalizeHexColor(value) {
+  return isHexColor(value) ? value.toUpperCase() : null;
+}
+function hexForTone(tone) {
+  return HEX_BY_TONE[tone] ?? HEX_BY_TONE.default;
+}
+function rgb(hex) {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return [n >> 16 & 255, n >> 8 & 255, n & 255];
+}
+function toneForColor(color) {
+  const normalized = normalizeHexColor(color) ?? HEX_BY_TONE.default;
+  const [r, g, b] = rgb(normalized);
+  let best = "default";
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const tone of ["default", "success", "warn", "danger"]) {
+    const [tr, tg, tb] = rgb(HEX_BY_TONE[tone]);
+    const distance = (r - tr) ** 2 + (g - tg) ** 2 + (b - tb) ** 2;
+    if (distance < bestDistance) {
+      best = tone;
+      bestDistance = distance;
+    }
+  }
+  return best;
 }
 
 // src/shared/validate.ts
@@ -169,7 +218,7 @@ function validateSegmentInput(input, opts) {
   const name = normalizeName(input.name);
   if (name.length === 0) issues.push("name_required");
   else if (name.length > NAME_MAX) issues.push("name_too_long");
-  if (!isTone(input.tone)) issues.push("tone_invalid");
+  if (!isHexColor(input.color)) issues.push("color_invalid");
   const start = input.start_day;
   const end = input.end_day;
   const rangeWellFormed = Number.isInteger(start) && Number.isInteger(end) && start >= 1 && end >= start && end <= MAX_TRIP_DAYS;
@@ -287,24 +336,24 @@ function stripEmojiLike(text) {
 }
 
 // src/server/repo.ts
-var COLUMNS = "id, trip_id, name, tone, start_day, end_day, created_at, updated_at";
+var COLUMNS = "id, trip_id, name, color, tone, start_day, end_day, created_at, updated_at";
 var SQL_LIST = `SELECT ${COLUMNS} FROM segments WHERE trip_id = ? ORDER BY start_day ASC, id ASC`;
 var SQL_GET = `SELECT ${COLUMNS} FROM segments WHERE trip_id = ? AND id = ?`;
 var SQL_COUNT = "SELECT COUNT(*) AS n FROM segments WHERE trip_id = ?";
 var SQL_DELETE = "DELETE FROM segments WHERE trip_id = ? AND id = ?";
-var SQL_INSERT_IF_FREE = `INSERT INTO segments (trip_id, name, tone, start_day, end_day)
-SELECT ?, ?, ?, ?, ?
+var SQL_INSERT_IF_FREE = `INSERT INTO segments (trip_id, name, color, tone, start_day, end_day)
+SELECT ?, ?, ?, ?, ?, ?
 WHERE (SELECT COUNT(*) FROM segments WHERE trip_id = ?) < ?
   AND NOT EXISTS (SELECT 1 FROM segments WHERE trip_id = ? AND start_day <= ? AND end_day >= ?)
 RETURNING ${COLUMNS}`;
 var SQL_UPDATE_IF_FREE = `UPDATE segments
-SET name = ?, tone = ?, start_day = ?, end_day = ?, updated_at = datetime('now')
+SET name = ?, color = ?, tone = ?, start_day = ?, end_day = ?, updated_at = datetime('now')
 WHERE id = ? AND trip_id = ?
   AND NOT EXISTS (SELECT 1 FROM segments WHERE trip_id = ? AND id <> ? AND start_day <= ? AND end_day >= ?)
 RETURNING ${COLUMNS}`;
 function sqlListForTrips(count) {
   const placeholders = new Array(count).fill("?").join(", ");
-  return `SELECT trip_id, name, tone, start_day, end_day FROM segments WHERE trip_id IN (${placeholders}) ORDER BY trip_id ASC, start_day ASC, id ASC`;
+  return `SELECT trip_id, name, color, tone, start_day, end_day FROM segments WHERE trip_id IN (${placeholders}) ORDER BY trip_id ASC, start_day ASC, id ASC`;
 }
 function toSegmentRow(raw) {
   if (!raw || typeof raw !== "object") return null;
@@ -315,11 +364,13 @@ function toSegmentRow(raw) {
   const endDay = Number(r["end_day"]);
   if (!Number.isInteger(id) || !Number.isInteger(tripId)) return null;
   if (!Number.isInteger(startDay) || !Number.isInteger(endDay)) return null;
+  const tone = isTone(r["tone"]) ? r["tone"] : "default";
   return {
     id,
     trip_id: tripId,
     name: String(r["name"] ?? ""),
-    tone: isTone(r["tone"]) ? r["tone"] : "default",
+    color: normalizeHexColor(r["color"]) ?? hexForTone(tone),
+    tone,
     start_day: startDay,
     end_day: endDay,
     created_at: String(r["created_at"] ?? ""),
@@ -350,7 +401,8 @@ async function insertSegmentIfFree(ctx, tripId, input) {
     SQL_INSERT_IF_FREE,
     tripId,
     input.name,
-    input.tone,
+    input.color,
+    toneForColor(input.color),
     input.start_day,
     input.end_day,
     tripId,
@@ -365,7 +417,8 @@ async function updateSegmentIfFree(ctx, tripId, id, input) {
   const updated = await ctx.db.query(
     SQL_UPDATE_IF_FREE,
     input.name,
-    input.tone,
+    input.color,
+    toneForColor(input.color),
     input.start_day,
     input.end_day,
     id,
@@ -566,8 +619,10 @@ function parseSegmentInput(body) {
   const missing = [];
   const rawName = body["name"];
   if (typeof rawName !== "string") missing.push("name");
+  const rawColor = body["color"];
   const rawTone = body["tone"];
-  if (!isTone(rawTone)) missing.push("tone");
+  const color = rawColor === void 0 ? isTone(rawTone) ? hexForTone(rawTone) : null : normalizeHexColor(rawColor);
+  if (!color) missing.push("color");
   const startDay = bodyInt(body, "start_day");
   if (startDay === null) missing.push("start_day");
   const endDay = bodyInt(body, "end_day");
@@ -575,7 +630,7 @@ function parseSegmentInput(body) {
   return {
     input: {
       name: normalizeName(rawName),
-      tone: isTone(rawTone) ? rawTone : "default",
+      color: color ?? hexForTone("default"),
       start_day: startDay ?? 0,
       end_day: endDay ?? 0
     },
@@ -713,10 +768,10 @@ var SEGMENT_PROPERTIES = {
     maxLength: NAME_MAX,
     description: "A short destination or leg name, such as Tokyo or Patagonia."
   },
-  tone: {
+  color: {
     type: "string",
-    enum: ["default", "success", "warn", "danger"],
-    description: "The TREK colour tone: default (indigo), success (emerald), warn (amber), or danger (red)."
+    pattern: "^#[0-9a-fA-F]{6}$",
+    description: "The segment colour as #rrggbb. Presets include #4F46E5, #10B981, #F59E0B and #EF4444."
   },
   start_day: {
     type: "integer",
@@ -810,7 +865,7 @@ var mcpTools = [
     inputSchema: {
       type: "object",
       properties: { tripId: TRIP_ID, ...SEGMENT_PROPERTIES },
-      required: ["tripId", "name", "tone", "start_day", "end_day"],
+      required: ["tripId", "name", "color", "start_day", "end_day"],
       additionalProperties: false
     },
     annotations: WRITE_ANNOTATIONS,
@@ -822,7 +877,7 @@ var mcpTools = [
     inputSchema: {
       type: "object",
       properties: { tripId: TRIP_ID, id: SEGMENT_ID, ...SEGMENT_PROPERTIES },
-      required: ["tripId", "id", "name", "tone", "start_day", "end_day"],
+      required: ["tripId", "id", "name", "color", "start_day", "end_day"],
       additionalProperties: false
     },
     annotations: { ...WRITE_ANNOTATIONS, idempotentHint: true },
@@ -913,7 +968,7 @@ function buildTints(views, idx) {
       if (out.length >= DAY_TINT_MAX) return out;
       const dayId = idx.dayIdByPos[pos - 1];
       if (dayId === void 0) continue;
-      out.push({ dayId, headerTone: view.tone, badgeTone: view.tone, label });
+      out.push({ dayId, headerColor: view.color, badgeColor: view.color, label });
     }
   }
   return out;

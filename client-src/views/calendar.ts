@@ -1,5 +1,5 @@
 import { clear, el } from '../dom';
-import { hexForTone, toneFill } from '../../src/shared/palette';
+import { colorFill } from '../../src/shared/palette';
 import { WEEKDAYS, dateParts, daysInMonth, mondayIndex, monthLabel, plural, shortDate } from '../../src/shared/format';
 import type { OverviewDay, OverviewPayload, SegmentView } from '../../src/shared/types';
 
@@ -120,7 +120,7 @@ function cellNode(cell: CalendarCell, selectedId: number | null, onOpen: (id: nu
     title,
     ...(segment ? { attrs: { type: 'button', 'aria-label': title } } : {}),
     ...(segment
-      ? { style: { backgroundColor: toneFill(segment.tone, 0.18), borderColor: hexForTone(segment.tone) } }
+        ? { style: { backgroundColor: colorFill(segment.color, 0.18), borderColor: segment.color } }
       : {}),
     ...(segment ? { on: { click: () => onOpen(segment.id) } } : {}),
   }, [
@@ -154,7 +154,7 @@ export function renderLegend(
         title: `Open ${view.name}`,
         on: { click: () => onOpen(view.id) },
       }, [
-        el('span', { class: 'seg-legend-dot', style: { backgroundColor: hexForTone(view.tone) } }),
+          el('span', { class: 'seg-legend-dot', style: { backgroundColor: view.color } }),
         el('span', { text: view.name }),
         el('span', { class: 'trek-faint', text: `${view.effLength}d` }),
       ]),
