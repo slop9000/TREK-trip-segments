@@ -25,16 +25,16 @@ Legs also show up outside the tab. The PDF export gets a summary section listing
 dates and counts, and the trip card on your dashboard gets a badge with the leg count and the first
 few names.
 
-Two further surfaces are built in and switch on by themselves once your TREK is new enough to offer
-them: a small banner in the day plan where each leg begins and ends, and one coloured line per leg on
-the trip map, following its stops in visiting order. They need permissions that TREK 3.4.1 does not
-have yet, and a plugin that asked for a permission its host did not recognise would refuse to install
-at all, so this release does not ask. Nothing breaks in the meantime; those two surfaces simply stay
-empty until a later version of the plugin turns them on.
+Three further integrations are already implemented: a small banner where each leg begins and ends,
+one coloured line per leg on the trip map, and matching colour tints on day headers and badges. Their
+provider permissions have not reached a production TREK release yet, and a plugin that asked for an
+unknown permission would refuse to install. This release therefore ships those integrations dormant.
+Nothing breaks in the meantime; a later plugin release can request each permission once its TREK
+counterpart is available.
 
-Choose from eight presets or use the custom colour picker. TREK's day-tint provider accepts the exact
-hex colour, so day headers and badges match the Segments tab. Map lines and schedule banners still use
-the closest of TREK's four semantic tones until those provider contracts also accept arbitrary colours.
+Choose from eight presets or use the custom colour picker. The Segments tab uses the exact hex colour.
+The dormant day-tint integration is also ready to send that exact colour once enabled; map lines and
+schedule banners use the closest of TREK's four semantic tones.
 
 ## Screenshots
 
