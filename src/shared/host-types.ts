@@ -380,8 +380,34 @@ export interface PluginHooks {
   };
 }
 
+/**
+ * A tool contributed to TREK's MCP server.
+ *
+ * Forward-compatible with the plugin MCP contribution contract landing after
+ * TREK 3.4.x. Older hosts ignore the unknown `mcpTools` definition key, while a
+ * newer host validates the schema and invokes the handler with the calling
+ * user's ordinary PluginContext.
+ */
+export interface PluginMcpTool {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  annotations?: {
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    idempotentHint?: boolean;
+    openWorldHint?: boolean;
+  };
+  handler(input: Record<string, unknown>, ctx: PluginContext): Promise<unknown> | unknown;
+}
+
 export interface PluginDefinition {
   onLoad?(ctx: PluginContext): Promise<void> | void;
   routes?: PluginRoute[];
   hooks?: PluginHooks;
+  /**
+   * Optional by design: the Segments tab works without the MCP addon. On hosts
+   * that support plugin-contributed tools these are discovered automatically.
+   */
+  mcpTools?: PluginMcpTool[];
 }

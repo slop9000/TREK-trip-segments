@@ -53,6 +53,18 @@ identical everywhere it appears, instead of being one colour in the tab and a di
 No personal data is stored. The plugin's database holds only trip ids, leg names, colours and day
 numbers, so there is no user data to export or erase.
 
+## MCP tools
+
+The plugin declares tools to list, inspect, create, update and delete trip segments. On TREK versions
+that support plugin-contributed MCP tools, an enabled Trip Segments plugin is discovered by the MCP
+server automatically; there is no separate segment toggle. Older TREK versions safely ignore the
+declarations, so the tab and its other integrations continue to work while that host support rolls
+out.
+
+MCP calls run as the calling user and go through the same membership checks, validation, overlap
+guards and live-update broadcast as changes made in the Segments tab. Deleting through MCP removes
+only the segment, never the trip days, bookings or stays inside it.
+
 ## Setup
 
 Install the plugin from the registry or sideload the packed zip, then activate it in Admin →

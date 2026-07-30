@@ -1,5 +1,6 @@
 import { ensureSchema } from './schema';
 import { routes } from './routes';
+import { mcpTools } from './mcp-tools';
 import { getSchedule } from './hooks/day-schedule';
 import { getDayTints } from './hooks/day-tint';
 import { getLayers } from './hooks/map-layer';
@@ -29,6 +30,12 @@ const plugin: PluginDefinition = {
   },
 
   routes,
+  /**
+   * TREK versions before plugin-contributed MCP tools simply ignore this
+   * unknown definition key. Once the MCP host change lands, an enabled plugin
+   * is discovered automatically — no segment-specific toggle is required.
+   */
+  mcpTools,
 
   /**
    * Each of these needs its matching `hook:*` permission in trek-plugin.json.

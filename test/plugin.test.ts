@@ -96,6 +96,50 @@ const FORWARD_COMPAT_HOOKS = new Set(['dayScheduleProvider', 'mapLayerProvider',
   });
 });
 
+describe('MCP tools', () => {
+  const tool = (name: string) => {
+    const found = plugin.mcpTools?.find((candidate) => candidate.name === name);
+    if (!found) throw new Error(`missing MCP tool ${name}`);
+    return found;
+  };
+
+  it('declares a complete, collision-resistant segment tool set', () => {
+    expect(plugin.mcpTools?.map((candidate) => candidate.name)).toEqual([
+      'list_trip_segments',
+      'get_trip_segment',
+      'create_trip_segment',
+      'update_trip_segment',
+      'delete_trip_segment',
+    ]);
+    expect(tool('list_trip_segments').annotations?.readOnlyHint).toBe(true);
+    expect(tool('create_trip_segment').annotations?.readOnlyHint).toBe(false);
+    expect(tool('delete_trip_segment').annotations?.destructiveHint).toBe(true);
+  });
+
+  it('uses the existing authenticated write path and broadcasts a successful MCP create', async () => {
+    const created = [
+      { id: 7, trip_id: 1, name: 'Tokyo', tone: 'default', start_day: 1, end_day: 5, created_at: 'x', updated_at: 'x' },
+    ];
+    const host = hostFor([1], { [SQL_INSERT_IF_FREE]: created });
+
+    const result = await tool('create_trip_segment').handler(
+      { tripId: 1, name: 'Tokyo', tone: 'default', start_day: 1, end_day: 5 },
+      host.ctx as never,
+    );
+
+    expect(result).toMatchObject({ ok: true, segment: { id: 7, name: 'Tokyo' } });
+    expect(host.broadcasts).toHaveLength(1);
+  });
+
+  it('does not let an MCP caller manage a trip they cannot access', async () => {
+    const host = hostFor([2]);
+
+    const result = await tool('list_trip_segments').handler({ tripId: 1 }, host.ctx as never);
+
+    expect(result).toMatchObject({ ok: false, status: 404, error: 'not_found' });
+  });
+});
+
 const ROUTE = (path: string, method = 'GET') => ({ method, path });
 
 /**
