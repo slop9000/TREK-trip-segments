@@ -2,6 +2,9 @@
 body {
   margin: 0;
 }
+html[data-fill] body.trek-ui {
+  overflow-y: auto;
+}
 #seg-root {
   box-sizing: border-box;
   max-width: 1160px;
@@ -523,4 +526,36 @@ body {
   border-color: var(--text-primary);
   background: var(--bg-hover);
   font-weight: 600;
+}
+[data-form-factor=phone] .seg-strip-track {
+  height: 44px;
+}
+[data-form-factor=phone] .seg-swatch {
+  width: 44px;
+  height: 44px;
+}
+[data-form-factor=phone] .seg-strip-bar:active {
+  filter: brightness(1.12);
+}
+[data-form-factor=phone] .seg-day-head:active {
+  background: var(--bg-hover);
+}
+[data-form-factor=phone] .seg-legend-item:active {
+  background: var(--bg-hover);
+}
+[data-form-factor=phone] .seg-cal-cell--in:active {
+  filter: brightness(1.06);
+}
+[data-form-factor=phone] .seg-panel-slot {
+  background: var(--m-card, var(--bg-card));
+  border-color: var(--m-cbr, var(--border-faint));
+  box-shadow: none;
+}
+[data-form-factor=phone] .seg-toggle-btn--on {
+  background: var(--m-card, var(--bg-card));
+  color: var(--m-ink, var(--text-primary));
+  box-shadow: none;
+}
+[data-form-factor=phone] .seg-card--open {
+  border-color: var(--text-primary);
 }

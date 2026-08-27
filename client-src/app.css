@@ -2,15 +2,32 @@
    re-sends live values in trek:context), so this tab follows the user's theme
    and accent without knowing anything about either. */
 
-/* Deliberately NO `height: 100%` here.
+/* Deliberately NO unconditional `height: 100%` here.
    A trip-page tab pins the iframe to 100% and ignores trek:resize, so content
-   taller than the frame simply scrolls the frame's own document — no explicit
-   height or overflow needed. Forcing `height: 100%` would instead make the
-   design kit's auto-resize circular: it measures <body>, which would then always
-   equal the frame it is trying to size, pinning /preview (and the registry
-   screenshot it produces) to a 120px sliver. */
+   taller than the frame simply scrolls the frame's own document. Forcing
+   `height: 100%` would instead make the design kit's auto-resize circular: it
+   measures <body>, which would then always equal the frame it is trying to
+   size, pinning /preview (and the registry screenshot it produces) to a 120px
+   sliver. */
 body {
   margin: 0;
+}
+
+/* From SDK 1.6.0 the kit ships
+     [data-fill] .trek-ui, [data-fill] body.trek-ui { height: 100%; overflow: hidden }
+   and the host sets data-fill on <html> for every trip-tab mount. The height
+   half is inert (nothing gives <html> a height), but the overflow half is not:
+   an overflow on <body> propagates to the viewport, so the document stops
+   scrolling and every leg below the fold becomes unreachable. Verified in
+   Chromium — a wheel over a 6286px document in a 500px frame moved nothing.
+
+   The kit's own answer is the opt-in .trek-scroll inner scroller, which needs a
+   full height chain. Restoring the document scroll is smaller, keeps one scroll
+   context, and leaves the height report that sizes /preview alone. Specificity
+   (0,2,2) beats the kit's (0,2,1); app.css is also linked after the kit, so it
+   would win a tie too. Scoped to [data-fill], so /preview is untouched. */
+html[data-fill] body.trek-ui {
+  overflow-y: auto;
 }
 
 /* A trip-page tab is as wide as the browser. Left unbounded, seven calendar
@@ -663,4 +680,66 @@ body {
   border-color: var(--text-primary);
   background: var(--bg-hover);
   font-weight: 600;
+}
+
+/* --- phone ---------------------------------------------------------------- */
+
+/* The host renders this tab on phones too (TREK 4 routes plugin:<id> tabs into
+   the mobile trip shell), and the kit already restyles every .trek-* class it
+   finds. What it cannot know about is the bespoke .seg-* furniture below.
+   Keyed on [data-form-factor="phone"] exactly as the kit is, so not one of
+   these rules applies on desktop. */
+
+/* Touch targets. 26px and 28px are comfortable with a mouse and too small for
+   a thumb; 44px is the floor the kit itself uses for buttons and inputs. */
+[data-form-factor='phone'] .seg-strip-track {
+  height: 44px;
+}
+
+[data-form-factor='phone'] .seg-swatch {
+  width: 44px;
+  height: 44px;
+}
+
+/* Every :hover affordance below is unreachable on a touch screen, so each one
+   needs an :active twin or the control reads as dead. Matches the kit's own
+   `.trek-interactive:active { transform: scale(.985); opacity: .9 }` idiom. */
+[data-form-factor='phone'] .seg-strip-bar:active {
+  filter: brightness(1.12);
+}
+
+[data-form-factor='phone'] .seg-day-head:active {
+  background: var(--bg-hover);
+}
+
+[data-form-factor='phone'] .seg-legend-item:active {
+  background: var(--bg-hover);
+}
+
+[data-form-factor='phone'] .seg-cal-cell--in:active {
+  filter: brightness(1.06);
+}
+
+/* The kit drops the shadow from .trek-card on the phone — a drop shadow over
+   the translucent gradient reads as a sticker — and these two bespoke surfaces
+   are the ones that kept theirs. */
+[data-form-factor='phone'] .seg-panel-slot {
+  background: var(--m-card, var(--bg-card));
+  border-color: var(--m-cbr, var(--border-faint));
+  box-shadow: none;
+}
+
+[data-form-factor='phone'] .seg-toggle-btn--on {
+  background: var(--m-card, var(--bg-card));
+  color: var(--m-ink, var(--text-primary));
+  box-shadow: none;
+}
+
+/* .seg-card--open says "this is the expanded one" with a shadow and nothing
+   else, and the kit's `[data-form-factor="phone"] .trek-card` (0,2,0) outranks
+   it (0,1,0) to set box-shadow: none. Without a replacement the open card is
+   indistinguishable from a closed one on the surface where the panel matters
+   most, so state it with the border instead. */
+[data-form-factor='phone'] .seg-card--open {
+  border-color: var(--text-primary);
 }
