@@ -8,7 +8,7 @@
  */
 
 export interface TrekContext {
-  /** Arrives as a STRING (PluginFrame.tsx:264) — never a number. */
+  /** Arrives as a STRING (PluginFrame.tsx, `tripId: string | null`) — never a number. */
   tripId?: string | null;
   userId?: string | null;
   theme?: 'light' | 'dark';

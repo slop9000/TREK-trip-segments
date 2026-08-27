@@ -31,9 +31,10 @@ const plugin: PluginDefinition = {
 
   routes,
   /**
-   * TREK versions before plugin-contributed MCP tools simply ignore this
-   * unknown definition key. Once the MCP host change lands, an enabled plugin
-   * is discovered automatically — no segment-specific toggle is required.
+   * Inert. No released TREK reads `mcpTools`, 4.0.0 included. An unknown
+   * definition key costs nothing, so the declarations stay ready rather than
+   * being deleted now and rewritten later — see PluginMcpTool in
+   * shared/host-types.ts for what is and is not known about the shape.
    */
   mcpTools,
 
@@ -41,17 +42,10 @@ const plugin: PluginDefinition = {
    * Each of these needs its matching `hook:*` permission in trek-plugin.json.
    * Without it the plugin still installs and activates, and the hook is simply
    * never called — no error, no log, nothing. test/plugin.test.ts asserts the
-   * two lists agree, allowing only the documented forward-compat exceptions.
+   * two lists agree, with no exceptions: all five are granted as of 1.2.0.
    */
   hooks: {
     dayScheduleProvider: { getSchedule },
-    /**
-     * Not in upstream TREK yet. Registering it costs nothing there — a host with
-     * no `hook:day-tint-provider` mapping never calls it — and it lights up
-     * automatically on a build that has the feature. The permission is NOT in
-     * the shipped manifest, because an unknown permission string makes the
-     * install itself fail (install/manifest.ts:181).
-     */
     dayTintProvider: { getDayTints },
     mapLayerProvider: { getLayers },
     pdfSectionProvider: { getSections },

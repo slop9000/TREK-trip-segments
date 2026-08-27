@@ -10,10 +10,7 @@ import type { DayIndex, SegmentView } from '../../shared/types';
  * Paint every day of a leg in that leg's colour, so leg membership is visible
  * while scrolling the itinerary rather than only at the two banner days.
  *
- * This hook does not exist in upstream TREK yet — see `DayTintContribution` in
- * shared/host-types.ts. Registering it is harmless on a host that has never
- * heard of it: `providersOf('dayTintProvider')` finds no permission mapping and
- * returns nothing, so the hook is simply never invoked.
+ * Shipped in TREK 4.0.0 (#1743) and granted since plugin 1.2.0.
  *
  * Where the day-schedule hook must ration 60 items across a whole trip, this one
  * is bounded by the day count, which is the entire reason it exists.

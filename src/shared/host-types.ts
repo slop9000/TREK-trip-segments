@@ -2,14 +2,19 @@
  * The slice of TREK's plugin contract this plugin depends on, declared here
  * rather than imported from `trek-plugin-sdk`.
  *
- * Why: the SDK published to npm as 1.5.0 does not yet describe
- * `dayScheduleProvider` or `mapLayerProvider` at all (no types, and its manifest
- * validator rejects their permission strings), even though TREK 3.4.x accepts
- * both — see server/src/nest/plugins/protocol/envelope.ts, which is the
- * authority. Depending on the stale d.ts would make two of our four hooks
- * untypeable; depending on a local `file:` checkout would make this repo
- * un-installable for anyone else. So the contracts live here, transcribed from
- * the host controllers, with each limit cited where it is enforced.
+ * History, because the original reason is gone: day-schedule, day-tint and
+ * map-layer ALL first ship in TREK 4.0.0. No 3.x release accepted any of them,
+ * and trek-plugin-sdk 1.6.0 is the first SDK to type them. Earlier comments in
+ * this repo claimed 3.4.x accepted two of the three; it did not.
+ *
+ * What still justifies local types: the SDK's `Day` carries id/trip_id/date/
+ * title and then an index signature, so `assignments` and `notes_items` — which
+ * the read model is built on — come back as `unknown`, and this repo compiles
+ * with `noUncheckedIndexedAccess`. So the contracts live here, transcribed from
+ * the host controllers, with each limit cited where it is enforced. Those
+ * controllers live in server/src/nest/plugins/contributions/ as of 4.0.0, and
+ * constants are cited by NAME rather than line: the line numbers rotted between
+ * 3.4.1 and 4.0.0 while the values did not.
  *
  * These types are advisory in both directions: the host re-validates every
  * value at runtime and silently drops whatever fails, which is exactly why the
@@ -322,22 +327,23 @@ export interface TripCardContribution {
 /**
  * A colour the host paints behind a day card in the Plan sidebar.
  *
- * NOT IN UPSTREAM TREK YET — it exists on the `feat/day-tint-provider` branch.
- * Implementing the hook is safe everywhere: without the matching grant the host
- * never calls it (`providersOf` returns nothing for a hook it has no permission
- * mapping for), so it is inert rather than broken.
+ * Shipped in TREK 4.0.0 (#1743), where it landed from this plugin author's own
+ * `feat/day-tint-provider` branch. Implementing a hook without the matching
+ * grant stays safe: `providersOf` returns nothing for a hook it has no
+ * permission mapping for, so it is inert rather than broken.
  *
- * DECLARING the permission is NOT safe: `install/manifest.ts:181` throws on an
- * unknown permission string, which would stop the plugin installing at all. So
- * `hook:day-tint-provider` is injected into the manifest only by an opt-in build
- * (see build.mjs), never into the shipped one.
+ * `hook:day-tint-provider` is in the shipped manifest as of plugin 1.2.0.
+ * Declaring a permission the host does not know is still fatal — install/manifest.ts
+ * throws on an unknown string rather than degrading — which is exactly what the
+ * manifest's `trek` range now guards.
  */
 export interface DayTintContribution {
   /** Must be a day of the requested trip. */
   dayId: number;
   /**
    * Shorthand: tints every region NOT named below. Omit it and only the named
-   * regions are tinted — which is how this plugin asks for the header alone.
+   * regions are tinted — which is how this plugin asks for the header and the
+   * badge while leaving the activity list on a plain background.
    *
    * If nothing resolves for any region the host falls back to tinting all three
    * with `default`, so an entry can never paint nothing.
@@ -388,10 +394,12 @@ export interface PluginHooks {
 /**
  * A tool contributed to TREK's MCP server.
  *
- * Forward-compatible with the plugin MCP contribution contract landing after
- * TREK 3.4.x. Older hosts ignore the unknown `mcpTools` definition key, while a
- * newer host validates the schema and invokes the handler with the calling
- * user's ordinary PluginContext.
+ * SPECULATIVE. No released TREK reads this key, 4.0.0 included — there is no
+ * plugin-contributed MCP surface in the tree at all — so this shape is a guess
+ * rather than a transcription of a host contract. TREK's own MCP tools are
+ * compile-time Nest providers taking a Zod raw shape and returning an MCP
+ * content envelope, which is not what is described here. Kept because an unknown
+ * definition key is inert; re-derive it from the host before trusting it.
  */
 export interface PluginMcpTool {
   name: string;
@@ -410,9 +418,6 @@ export interface PluginDefinition {
   onLoad?(ctx: PluginContext): Promise<void> | void;
   routes?: PluginRoute[];
   hooks?: PluginHooks;
-  /**
-   * Optional by design: the Segments tab works without the MCP addon. On hosts
-   * that support plugin-contributed tools these are discovered automatically.
-   */
+  /** Inert on every released TREK — see PluginMcpTool above. */
   mcpTools?: PluginMcpTool[];
 }
