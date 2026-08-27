@@ -101,52 +101,6 @@ assert.ok(
 const LINK_DIR = '.link';
 const ROOT_FILES = ['trek-plugin.json', 'README.md', 'LICENSE', 'package.json'];
 
-/**
- * Permissions that only NEWER TREK builds know about.
- *
- * None of these may go in the shipped manifest: `install/manifest.ts:181` throws
- * on an unknown permission string, so declaring one stops the plugin installing
- * at all on a host without it — a hard failure, not a graceful degradation. The
- * hook implementations ship unconditionally instead and are simply never invoked
- * where the host has no mapping for them.
- *
- * As of TREK 3.4.1 (upstream `main`, and npm trek-plugin-sdk@1.5.0):
- *   - day-schedule + map-layer  are on `dev`, unreleased
- *   - day-tint                  is on this author's fork only
- *
- * So the published manifest declares five permissions — enough for the tab, the
- * PDF section and the trip-card badge — and the rest activate wherever the host
- * knows them, through the dev-link copy below.
- */
-const CANDIDATE_PERMISSIONS = [
-  'hook:day-schedule-provider',
-  'hook:map-layer-provider',
-  'hook:day-tint-provider',
-];
-
-function hostKnowsPermission(permission) {
-  const candidates = [
-    process.env.TREK_REPO && path.join(process.env.TREK_REPO, 'server/src/nest/plugins/protocol/envelope.ts'),
-    path.resolve('../../TREK/server/src/nest/plugins/protocol/envelope.ts'),
-  ].filter(Boolean);
-
-  for (const file of candidates) {
-    if (existsSync(file)) return readFileSync(file, 'utf8').includes(`'${permission}'`);
-  }
-  return false;
-}
-
-/**
- * Ask the TREK checkout we are linked against which of these it actually knows,
- * rather than requiring a flag. With a flag, a plain `npm run build` would
- * silently revert the linked manifest and the features would evaporate on the
- * next re-link. `--no-optional` forces the shipped set, to preview exactly what
- * a released TREK sees.
- */
-const OPTIONAL_PERMISSIONS = process.argv.includes('--no-optional')
-  ? []
-  : CANDIDATE_PERMISSIONS.filter(hostKnowsPermission);
-
 // Overwrite in place rather than wiping first: once TREK has dev-linked this
 // directory it holds a junction into it, and Windows answers EPERM to a
 // recursive remove of a junction target that is in use. The shipped file set is
@@ -156,12 +110,6 @@ for (const file of ROOT_FILES) {
   if (existsSync(file)) cpSync(file, `${LINK_DIR}/${file}`);
 }
 
-if (OPTIONAL_PERMISSIONS.length > 0) {
-  const manifest = JSON.parse(readFileSync('trek-plugin.json', 'utf8'));
-  const permissions = [...new Set([...manifest.permissions, ...OPTIONAL_PERMISSIONS])];
-  writeFileSync(`${LINK_DIR}/trek-plugin.json`, `${JSON.stringify({ ...manifest, permissions }, null, 2)}\n`);
-  console.log(`dev-link manifest: +${OPTIONAL_PERMISSIONS.join(', ')}`);
-}
 for (const dir of ['server', 'client']) {
   cpSync(dir, `${LINK_DIR}/${dir}`, { recursive: true });
 }
@@ -179,13 +127,14 @@ for (const dir of ['server', 'client']) {
  * using the same SDK the CLI uses, so what we dev-link matches what we ship.
  */
 async function loadKitInjector() {
-  const local = [
+  // The pinned devDependency wins, so what we dev-link is the kit `pack` ships.
+  // An unreleased checkout is opt-in through TREK_SDK_DIST / TREK_REPO.
+  const overrides = [
     process.env.TREK_SDK_DIST,
     process.env.TREK_REPO && path.join(process.env.TREK_REPO, 'plugin-sdk/dist/index.js'),
-    path.resolve('../../TREK/plugin-sdk/dist/index.js'),
   ].filter(Boolean);
 
-  for (const candidate of local) {
+  for (const candidate of overrides) {
     if (existsSync(candidate)) return (await import(pathToFileURL(candidate).href)).injectTrekUi;
   }
   return (await import('trek-plugin-sdk')).injectTrekUi;
