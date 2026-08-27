@@ -29,6 +29,9 @@
     }
     return api2;
   }
+  function hasTrek() {
+    return Boolean(window.trek);
+  }
   async function api(sub, init) {
     try {
       return await trek().invoke(sub, init);
@@ -66,12 +69,20 @@
     }
   }
   function reportHeight() {
+    if (trekContext()?.viewport?.fill === true) return;
     const height = document.documentElement.scrollHeight;
     if (height <= 0) return;
     try {
       trek().resize(height);
     } catch {
     }
+  }
+  function trekContext() {
+    if (!hasTrek()) return void 0;
+    return trek().context ?? void 0;
+  }
+  function shouldBlurCodes() {
+    return trekContext()?.formats?.blurBookingCodes === true;
   }
   function onTrip(cb) {
     trek().onContext((ctx) => {
@@ -792,13 +803,33 @@
     row.append(contents);
     return row;
   }
+  function codeEl(code) {
+    if (!code) return null;
+    if (!shouldBlurCodes()) return el("span", { class: "trek-faint", text: code });
+    const node = el("button", {
+      class: "trek-faint seg-code",
+      text: code,
+      title: "Reveal booking code",
+      attrs: { type: "button", "aria-label": `Reveal booking code ${code}` },
+      on: {
+        click: (ev) => {
+          ev.currentTarget.classList.toggle("seg-code--on");
+        }
+      }
+    });
+    return node;
+  }
   function bookingRow(booking) {
     const when = booking.time ? shortDate(booking.time.slice(0, 10)) : null;
     const days = booking.fromPos === booking.toPos ? `Day ${booking.fromPos}` : dayRangeLabel(booking.fromPos, booking.toPos);
     return el("div", { class: "trek-row seg-row" }, [
       el("div", { class: "seg-row-main" }, [
         el("span", { class: "seg-row-title", text: booking.title }),
-        el("span", { class: "trek-faint", text: [days, when, booking.confirmation].filter(Boolean).join(" \xB7 ") })
+        el("div", { class: "seg-row-meta" }, [
+          el("span", { class: "trek-faint", text: [days, when].filter(Boolean).join(" \xB7 ") }),
+          booking.confirmation ? el("span", { class: "trek-faint", text: "\xB7" }) : null,
+          codeEl(booking.confirmation)
+        ])
       ]),
       el("div", { class: "trek-cluster" }, [
         booking.type ? chip(booking.type) : null,
@@ -814,13 +845,16 @@
       dayRangeLabel(stay.fromPos, stay.toPos),
       plural(stay.nights, "night", "nights"),
       stay.checkIn ? `in ${stay.checkIn}` : null,
-      stay.checkOut ? `out ${stay.checkOut}` : null,
-      stay.confirmation
+      stay.checkOut ? `out ${stay.checkOut}` : null
     ].filter(Boolean).join(" \xB7 ");
     return el("div", { class: "trek-row seg-row" }, [
       el("div", { class: "seg-row-main" }, [
         el("span", { class: "seg-row-title", text: stay.placeName ?? "Stay" }),
-        el("span", { class: "trek-faint", text: detail }),
+        el("div", { class: "seg-row-meta" }, [
+          el("span", { class: "trek-faint", text: detail }),
+          stay.confirmation ? el("span", { class: "trek-faint", text: "\xB7" }) : null,
+          codeEl(stay.confirmation)
+        ]),
         stay.bookingTitles.length > 0 ? el("span", { class: "trek-faint", text: stay.bookingTitles.join(", ") }) : null
       ])
     ]);
@@ -866,6 +900,7 @@
     "client-src/views/detail.ts"() {
       "use strict";
       init_dom();
+      init_bridge();
       init_palette();
       init_format();
       expanded = /* @__PURE__ */ new Set();

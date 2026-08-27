@@ -1,4 +1,5 @@
 import { button, chip, clear, el, muted } from '../dom';
+import { shouldBlurCodes } from '../bridge';
 import { toneChipClass } from '../../src/shared/palette';
 import { dayRangeLabel, plural, segmentRangeLabel, shortDate } from '../../src/shared/format';
 import type { DetailBooking, DetailDay, DetailPayload, DetailStay, SegmentView } from '../../src/shared/types';
@@ -66,6 +67,33 @@ function dayRow(day: DetailDay): HTMLElement {
   return row;
 }
 
+/**
+ * A confirmation code, blurred when the user asked for that.
+ *
+ * Rendered as its own element rather than joined into the detail line, because
+ * a blur has to cover the code and nothing else. Hover reveals AND click
+ * toggles, matching what TREK does in its own booking lists — hover alone would
+ * leave the code unreachable on the phone surface this tab now renders on. When
+ * blurring is off it is inert text and stays out of the tab order.
+ */
+function codeEl(code: string | null | undefined): HTMLElement | null {
+  if (!code) return null;
+  if (!shouldBlurCodes()) return el('span', { class: 'trek-faint', text: code });
+
+  const node = el('button', {
+    class: 'trek-faint seg-code',
+    text: code,
+    title: 'Reveal booking code',
+    attrs: { type: 'button', 'aria-label': `Reveal booking code ${code}` },
+    on: {
+      click: (ev) => {
+        (ev.currentTarget as HTMLElement).classList.toggle('seg-code--on');
+      },
+    },
+  });
+  return node;
+}
+
 function bookingRow(booking: DetailBooking): HTMLElement {
   const when = booking.time ? shortDate(booking.time.slice(0, 10)) : null;
   const days =
@@ -74,7 +102,11 @@ function bookingRow(booking: DetailBooking): HTMLElement {
   return el('div', { class: 'trek-row seg-row' }, [
     el('div', { class: 'seg-row-main' }, [
       el('span', { class: 'seg-row-title', text: booking.title }),
-      el('span', { class: 'trek-faint', text: [days, when, booking.confirmation].filter(Boolean).join(' · ') }),
+      el('div', { class: 'seg-row-meta' }, [
+        el('span', { class: 'trek-faint', text: [days, when].filter(Boolean).join(' · ') }),
+        booking.confirmation ? el('span', { class: 'trek-faint', text: '·' }) : null,
+        codeEl(booking.confirmation),
+      ]),
     ]),
     el('div', { class: 'trek-cluster' }, [
       booking.type ? chip(booking.type) : null,
@@ -92,7 +124,6 @@ function stayRow(stay: DetailStay): HTMLElement {
     plural(stay.nights, 'night', 'nights'),
     stay.checkIn ? `in ${stay.checkIn}` : null,
     stay.checkOut ? `out ${stay.checkOut}` : null,
-    stay.confirmation,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -100,7 +131,11 @@ function stayRow(stay: DetailStay): HTMLElement {
   return el('div', { class: 'trek-row seg-row' }, [
     el('div', { class: 'seg-row-main' }, [
       el('span', { class: 'seg-row-title', text: stay.placeName ?? 'Stay' }),
-      el('span', { class: 'trek-faint', text: detail }),
+      el('div', { class: 'seg-row-meta' }, [
+        el('span', { class: 'trek-faint', text: detail }),
+        stay.confirmation ? el('span', { class: 'trek-faint', text: '·' }) : null,
+        codeEl(stay.confirmation),
+      ]),
       stay.bookingTitles.length > 0 ? el('span', { class: 'trek-faint', text: stay.bookingTitles.join(', ') }) : null,
     ]),
   ]);

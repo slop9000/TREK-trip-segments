@@ -682,6 +682,37 @@ html[data-fill] body.trek-ui {
   font-weight: 600;
 }
 
+/* --- booking codes -------------------------------------------------------- */
+
+/* A confirmation code under the blur_booking_codes setting. TREK blurs codes
+   wherever it prints them; this matches its blur radius and transition so the
+   two read as the same control. Reveal on hover for the mouse and on click for
+   the thumb — the tab renders on phones now, where hover does not exist. */
+.seg-row-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.seg-code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  filter: blur(4px);
+  transition: filter 200ms var(--trek-ease, ease);
+}
+
+.seg-code:hover,
+.seg-code:focus-visible,
+.seg-code--on {
+  filter: none;
+}
+
 /* --- phone ---------------------------------------------------------------- */
 
 /* The host renders this tab on phones too (TREK 4 routes plugin:<id> tabs into

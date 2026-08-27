@@ -13,6 +13,23 @@ export interface TrekContext {
   userId?: string | null;
   theme?: 'light' | 'dark';
   locale?: string;
+  /** New in TREK 4. The user's display preferences, forwarded to every frame. */
+  formats?: {
+    /** The privacy setting TREK honours everywhere it prints a booking code. */
+    blurBookingCodes?: boolean;
+  };
+  /**
+   * New in TREK 4: which of the six host surfaces this frame is mounted in, how
+   * much chrome floats above and below it, and whether the phone token family
+   * is in play. The kit stamps data-surface / data-form-factor / data-fill on
+   * <html> from this, so prefer those attributes in CSS over branching here.
+   */
+  viewport?: {
+    surface?: string | null;
+    formFactor?: 'phone' | 'desktop';
+    fill?: boolean;
+    insets?: { top?: number; bottom?: number };
+  };
 }
 
 export interface ConfirmOptions {
@@ -29,6 +46,8 @@ interface SessionScope {
 }
 
 interface TrekApi {
+  /** The last context received, kept synchronously by the kit (1.6.0+). */
+  context?: TrekContext | null;
   onContext(cb: (ctx: TrekContext) => void): () => void;
   /** Fires with the event NAME only — there is never a payload. */
   onEvent(cb: (event: string, tripId: string) => void): () => void;
@@ -146,6 +165,10 @@ export async function confirmDanger(opts: ConfirmOptions): Promise<boolean> {
  * document height now, so the two never disagree.
  */
 export function reportHeight(): void {
+  // On a fill surface the host pins the frame and discards the report, so the
+  // round-trip is pure waste. Absent a viewport (any pre-4 host, and the dev
+  // preview) keep reporting — it is the only thing sizing /preview.
+  if (trekContext()?.viewport?.fill === true) return;
   const height = document.documentElement.scrollHeight;
   if (height <= 0) return;
   try {
@@ -153,6 +176,26 @@ export function reportHeight(): void {
   } catch {
     /* no bridge, nothing to report to */
   }
+}
+
+/**
+ * The last context, or undefined on a host too old to keep one. Read at render
+ * time rather than cached, so a setting changed mid-session takes effect on the
+ * next paint without plumbing it through the store.
+ */
+export function trekContext(): TrekContext | undefined {
+  if (!hasTrek()) return undefined;
+  return trek().context ?? undefined;
+}
+
+/**
+ * Whether to blur booking codes. TREK honours this wherever it prints one, so a
+ * tab that ignored it would be the single place in the app that leaks a code
+ * the user asked to keep covered. Defaults to false: a host that never sends
+ * `formats` is a host with no such setting.
+ */
+export function shouldBlurCodes(): boolean {
+  return trekContext()?.formats?.blurBookingCodes === true;
 }
 
 /** Subscribe to trip context, handing back the numeric trip id. */
