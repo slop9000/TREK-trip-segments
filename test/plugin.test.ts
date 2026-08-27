@@ -59,6 +59,92 @@ describe('manifest and code agree', () => {
   });
 });
 
+/**
+ * The three hooks TREK 4 unlocked, driven end to end.
+ *
+ * test/hooks.test.ts covers the pure builders; everything around them — the
+ * ensureSchema -> listSegments -> getDays -> build chain, and the catch that
+ * turns a failure into an empty contribution rather than a broken day plan —
+ * had no coverage at all. That is exactly the seam the dormancy hid in, so it
+ * is the seam worth guarding.
+ *
+ * `driver.hook()` enforces the grant the way the host does: TREK skips an
+ * ungranted plugin SILENTLY, so a hook that is implemented but not declared is
+ * invisible in production and green in a builder-only unit test. Before SDK
+ * 1.6.0 these assertions could not exist -- 1.5.0's HOOK_PERMISSION knew none of
+ * these three, so the lookup came back undefined and nothing was enforced.
+ */
+describe('provider hooks the host can actually reach', () => {
+  const SEGMENTS = [
+    { id: 1, trip_id: 1, name: 'Tokyo', color: '#4F46E5', tone: 'default', start_day: 1, end_day: 3, created_at: 'x', updated_at: 'x' },
+    { id: 2, trip_id: 1, name: 'Kyoto', color: '#059669', tone: 'success', start_day: 5, end_day: 8, created_at: 'x', updated_at: 'x' },
+  ];
+
+  const withSegments = () => hostFor([1], { [SQL_LIST]: SEGMENTS });
+
+  it('tints every day of every leg, in that leg\'s own colour', async () => {
+    const driver = withSegments().run(asSdkPlugin(plugin));
+
+    const tints = await driver.hook<Array<Record<string, unknown>>>('dayTintProvider', 'getDayTints', 1);
+
+    // 3 days of Tokyo + 4 of Kyoto; the gap at day 4 belongs to no leg.
+    expect(tints).toHaveLength(7);
+    expect(tints[0]).toMatchObject({ headerColor: '#4F46E5', badgeColor: '#4F46E5', label: 'Tokyo' });
+    // Deliberately NOT the `color` shorthand, which would wash the activity list.
+    expect(tints[0]).not.toHaveProperty('color');
+  });
+
+  it('puts a banner where each leg begins and ends', async () => {
+    const driver = withSegments().run(asSdkPlugin(plugin));
+
+    const items = await driver.hook<Array<Record<string, unknown>>>('dayScheduleProvider', 'getSchedule', 1);
+
+    expect(items.length).toBeGreaterThan(0);
+    // Every row anchors to a real day of the trip and declares sane minutes;
+    // the host drops anything outside 1..1440 or off the trip's own day list.
+    for (const item of items) {
+      expect(typeof item.dayId).toBe('number');
+    }
+  });
+
+  it('contributes map layers within the four-layer budget the host allows', async () => {
+    const driver = withSegments().run(asSdkPlugin(plugin));
+
+    const layers = await driver.hook<unknown[]>('mapLayerProvider', 'getLayers', 1);
+
+    expect(Array.isArray(layers)).toBe(true);
+    expect(layers.length).toBeLessThanOrEqual(4);
+  });
+
+  it('contributes nothing at all for a trip with no legs', async () => {
+    const driver = hostFor([1], { [SQL_LIST]: [] }).run(asSdkPlugin(plugin));
+
+    expect(await driver.hook('dayTintProvider', 'getDayTints', 1)).toEqual([]);
+    expect(await driver.hook('dayScheduleProvider', 'getSchedule', 1)).toEqual([]);
+    expect(await driver.hook('mapLayerProvider', 'getLayers', 1)).toEqual([]);
+  });
+
+  /**
+   * The failure the grant test cannot see: a hook the host refuses to call. If
+   * a permission is ever dropped from the manifest these prove the hook goes
+   * dark, rather than the plugin quietly contributing nothing forever.
+   */
+  it.each([
+    ['dayTintProvider', 'getDayTints', 'hook:day-tint-provider'],
+    ['dayScheduleProvider', 'getSchedule', 'hook:day-schedule-provider'],
+    ['mapLayerProvider', 'getLayers', 'hook:map-layer-provider'],
+  ])('refuses %s without %s', async (hook, fn, permission) => {
+    const ungranted = createMockHost({
+      actingUserId: 1,
+      grants: manifest.permissions.filter((p) => p !== permission),
+      trips: { 1: { members: [1], data: { id: 1, title: 'Japan' }, days: [], reservations: [], accommodations: [] } },
+      queryResults: { [SQL_LIST]: SEGMENTS },
+    });
+
+    await expect(ungranted.run(asSdkPlugin(plugin)).hook(hook, fn, 1)).rejects.toThrow();
+  });
+});
+
 describe('MCP tools', () => {
   const tool = (name: string) => {
     const found = plugin.mcpTools?.find((candidate) => candidate.name === name);
