@@ -1,53 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { createMockHost } from 'trek-plugin-sdk/testing';
+import { HOOK_PERMISSION, KNOWN_PERMISSIONS } from 'trek-plugin-sdk';
 import manifest from '../trek-plugin.json';
 import plugin from '../src/server/index';
 import { SQL_INSERT_IF_FREE, SQL_LIST } from '../src/server/repo';
 import { makeDays } from './helpers';
 
-/**
- * Hook name -> the permission that gates it, transcribed from
- * server/src/nest/plugins/supervisor/plugin-supervisor.ts:96-115 (the host's
- * own map, and the authority).
- *
- * This is checked locally rather than through the SDK's `grantGaps` because the
- * published SDK's copy of this map is a release behind and does not know
- * `dayScheduleProvider` or `mapLayerProvider` — so it would report "no gaps"
- * for exactly the two hooks most likely to be misconfigured.
- */
-const HOOK_PERMISSION: Record<string, string> = {
-  dayScheduleProvider: 'hook:day-schedule-provider',
-  dayTintProvider: 'hook:day-tint-provider',
-  mapLayerProvider: 'hook:map-layer-provider',
-  pdfSectionProvider: 'hook:pdf-section-provider',
-  tripCardProvider: 'hook:trip-card-provider',
-  warningProvider: 'hook:trip-warning-provider',
-  tableContributor: 'hook:table-contributor',
-  mapMarkerProvider: 'hook:map-marker-provider',
-  placeDetailProvider: 'hook:place-detail-provider',
-};
-
 describe('manifest and code agree', () => {
-/**
- * Hooks we implement on purpose WITHOUT declaring their permission, because the
- * permission does not exist in every TREK yet. As of TREK 3.4.1 (upstream main)
- * day-schedule and map-layer are on `dev` and day-tint is fork-only.
- *
- * The asymmetry is deliberate and load-bearing:
- *  - implementing an unknown hook is inert — `providersOf` has no permission
- *    mapping for it and never calls it;
- *  - DECLARING an unknown permission is fatal — `install/manifest.ts:181` throws,
- *    so the plugin fails to install at all.
- *
- * `npm run build:daytint` adds the permission to the dev-link copy only, for a
- * fork that has the feature.
- */
-const FORWARD_COMPAT_HOOKS = new Set(['dayScheduleProvider', 'mapLayerProvider', 'dayTintProvider']);
-
-  it('grants a permission for every hook that needs one today', () => {
+  it('grants a permission for every hook it implements', () => {
     const granted = new Set<string>(manifest.permissions);
     const gaps = Object.keys(plugin.hooks ?? {})
-      .filter((hook) => !FORWARD_COMPAT_HOOKS.has(hook))
       .filter((hook) => !granted.has(HOOK_PERMISSION[hook] ?? `hook:UNKNOWN(${hook})`))
       .map((hook) => `${hook} needs ${HOOK_PERMISSION[hook] ?? '???'}`);
 
@@ -63,13 +25,14 @@ const FORWARD_COMPAT_HOOKS = new Set(['dayScheduleProvider', 'mapLayerProvider',
   });
 
   /**
-   * The one that protects installs everywhere: a forward-compat permission in
-   * the shipped manifest would make stock TREK refuse the plugin outright.
+   * The one that protects installs everywhere: declaring a permission the host
+   * does not know is fatal, not a graceful degradation — install/manifest.ts
+   * throws and the plugin never installs. The manifest's `trek` range is what
+   * keeps this honest, so this asserts against the SDK pinned to that range.
    */
-  it('never ships a permission that some TREK builds do not know', () => {
-    const forwardCompat = [...FORWARD_COMPAT_HOOKS].map((hook) => HOOK_PERMISSION[hook]);
-    for (const permission of forwardCompat) {
-      expect(manifest.permissions, `${permission} must not be in the shipped manifest`).not.toContain(permission);
+  it('never ships a permission outside the TREK line it targets', () => {
+    for (const permission of manifest.permissions) {
+      expect(KNOWN_PERMISSIONS, `${permission} is not a permission TREK 4 knows`).toContain(permission);
     }
   });
 

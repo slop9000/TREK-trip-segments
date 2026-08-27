@@ -25,16 +25,16 @@ Legs also show up outside the tab. The PDF export gets a summary section listing
 dates and counts, and the trip card on your dashboard gets a badge with the leg count and the first
 few names.
 
-Three further integrations are already implemented: a small banner where each leg begins and ends,
-one coloured line per leg on the trip map, and matching colour tints on day headers and badges. Their
-provider permissions have not reached a production TREK release yet, and a plugin that asked for an
-unknown permission would refuse to install. This release therefore ships those integrations dormant.
-Nothing breaks in the meantime; a later plugin release can request each permission once its TREK
-counterpart is available.
+Three further integrations light up the rest of the planner: a small banner where each leg begins and
+ends on the day plan, one coloured line per leg on the trip map, and matching colour tints on day
+headers and badges. All three rest on provider hooks that TREK added in 4.0.0, which is why this
+release requires that version.
 
-Choose from eight presets or use the custom colour picker. The Segments tab uses the exact hex colour.
-The dormant day-tint integration is also ready to send that exact colour once enabled; map lines and
-schedule banners use the closest of TREK's four semantic tones.
+Choose from eight presets or use the custom colour picker. The Segments tab uses the exact hex colour,
+and the day tint keeps your hue and chroma while TREK clamps lightness into a band that stays readable
+against the current theme — all eight presets already sit inside that band, but an extreme custom
+colour will be shifted on the day header. Map lines and schedule banners use the closest of TREK's
+four semantic tones, because neither hook carries a colour channel of its own.
 
 ## Screenshots
 
@@ -47,6 +47,9 @@ schedule banners use the closest of TREK's four semantic tones.
 | `db:own` | Stores the legs themselves — name, colour, day range — in the plugin's own SQLite database. Nothing is written to TREK's tables. |
 | `db:read:trips` | Reads the trip's days, bookings and accommodation stays in order to resolve day ranges and build the per-leg view. Read-only. |
 | `ws:broadcast:trip` | Notifies other people looking at the same trip that the legs changed, so their tab refreshes without a reload. |
+| `hook:day-schedule-provider` | Puts the small start/end banner for each leg on the day plan. |
+| `hook:day-tint-provider` | Tints the day header and badge in the leg's own colour. |
+| `hook:map-layer-provider` | Draws one coloured line per leg on the trip map. |
 | `hook:pdf-section-provider` | Adds the leg summary section to the trip's PDF export. |
 | `hook:trip-card-provider` | Adds the leg-count badge to the trip card on the dashboard. |
 
@@ -55,23 +58,24 @@ numbers, so there is no user data to export or erase.
 
 ## MCP tools
 
-The plugin declares tools to list, inspect, create, update and delete trip segments. On TREK versions
-that support plugin-contributed MCP tools, an enabled Trip Segments plugin is discovered by the MCP
-server automatically; there is no separate segment toggle. Older TREK versions safely ignore the
-declarations, so the tab and its other integrations continue to work while that host support rolls
-out.
+The plugin declares tools to list, inspect, create, update and delete trip segments. Read this section
+as intent rather than as a shipped feature: **no released TREK exposes plugin-contributed MCP tools,
+4.0.0 included**, so nothing reads these declarations today and they change nothing about how the
+plugin behaves. They are kept so the feature is ready if host support lands.
 
-MCP calls run as the calling user and go through the same membership checks, validation, overlap
-guards and live-update broadcast as changes made in the Segments tab. Deleting through MCP removes
-only the segment, never the trip days, bookings or stays inside it.
+Were a host to serve them, the handlers run as the calling user and go through the same membership
+checks, validation, overlap guards and live-update broadcast as changes made in the Segments tab, and
+deleting removes only the segment, never the trip days, bookings or stays inside it.
 
 ## Setup
 
-Install the plugin from the registry or sideload the packed zip, then activate it in Admin →
+Trip Segments 1.2.0 requires **TREK 4.0.0 or newer**; on an older instance the registry keeps serving
+1.1.0 instead. Install from the registry or sideload the packed zip, then activate it in Admin →
 Plugins and approve the permissions listed above. There is nothing else to configure — no API keys,
 no settings, no external services are contacted.
 
-Open any trip and you will find a Segments tab immediately after Plan. Use Add leg to draw your
+Open any trip and you will find a Segments tab immediately after Plan; it is also addressable
+directly as `?tab=plugin:trip-segments`, so it can be a bookmark or a startup destination. Use Add leg to draw your
 first one: give it a name, pick a colour, and choose the first and last day from the dropdowns. Keep
 adding legs until the colour bar across the top covers the parts of the trip you care about. Deleting
 a leg only deletes the leg; the days, bookings and stays inside it are untouched, because the plugin
