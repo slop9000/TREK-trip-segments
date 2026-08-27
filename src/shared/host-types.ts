@@ -197,6 +197,29 @@ export interface PluginRoute {
 // ---------------------------------------------------------------------------
 
 export interface PluginContext {
+  /**
+   * Per-USER settings, resolved against the acting user.
+   *
+   * Optional only so test doubles can omit it — the host builds this channel for
+   * every plugin unconditionally, and `settings.get` is in UNCONDITIONAL_METHODS
+   * (protocol/envelope.ts), so no grant gates it and the permission table needs
+   * no new row.
+   *
+   * PER-USER, and there is no way to read anything else: the RPC handler is
+   * `settings.readOne(ctx.pluginId, ctx.actingUserId, key)` (host/rpc/db.rpc.ts),
+   * which reads storage keyed (plugin_id, user_id). A field declared
+   * `scope:'instance'` is stored where no plugin method can reach it — those
+   * exist for host-consumed config such as OAuth client credentials. Declaring
+   * one here would read `undefined` forever, with no error.
+   *
+   * It resolves inside a hook because the day-tint controller threads the viewer
+   * through: `this.hooks.dayTints(id, tripId, userId)`
+   * (contributions/day-tints.controller.ts). A userless dispatch — a notification
+   * channel, say — would get undefined instead.
+   */
+  settings?: {
+    get(key: string): Promise<unknown>;
+  };
   readonly id: string;
   db: {
     /**

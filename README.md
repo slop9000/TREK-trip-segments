@@ -48,13 +48,35 @@ four semantic tones, because neither hook carries a colour channel of its own.
 | `db:read:trips` | Reads the trip's days, bookings and accommodation stays in order to resolve day ranges and build the per-leg view. Read-only. |
 | `ws:broadcast:trip` | Notifies other people looking at the same trip that the legs changed, so their tab refreshes without a reload. |
 | `hook:day-schedule-provider` | Puts the small start/end banner for each leg on the day plan. |
-| `hook:day-tint-provider` | Tints the day header and badge in the leg's own colour. |
+| `hook:day-tint-provider` | Tints the day in the leg's own colour. Which parts of it — header, badge, the whole day, or none — is a per-user setting. |
 | `hook:map-layer-provider` | Draws one coloured line per leg on the trip map. |
 | `hook:pdf-section-provider` | Adds the leg summary section to the trip's PDF export. |
 | `hook:trip-card-provider` | Adds the leg-count badge to the trip card on the dashboard. |
 
 No personal data is stored. The plugin's database holds only trip ids, leg names, colours and day
 numbers, so there is no user data to export or erase.
+
+## Settings
+
+One setting, **Day tint**, under Settings → Plugins. It chooses how much of a day the leg colour
+covers:
+
+| Option | What it paints |
+| --- | --- |
+| Whole day | The day header, the number badge and the expanded activity list |
+| Header and badge *(default)* | The header row and the number badge, leaving the activity list plain |
+| Badge only | The number badge alone |
+| No tint | Nothing — this also removes the leg-name tooltip, which has no colour-free form |
+
+It is **per user**: your choice changes how you see a trip, not how the people you travel with see
+it. TREK's plugin settings are read against the acting user, so there is no instance-wide form of
+this — a shared value could not be read back by the plugin at all.
+
+Two honest caveats. The day plan reads tints once when it mounts and nothing invalidates that, so a
+change shows the next time you open a trip rather than immediately. And on phones only the day chip
+carries a tint, so the first three options look the same there; only **No tint** differs.
+
+The default matches what 1.2.0 did, so upgrading changes nothing until you pick something else.
 
 ## MCP tools
 
@@ -69,10 +91,10 @@ deleting removes only the segment, never the trip days, bookings or stays inside
 
 ## Setup
 
-Trip Segments 1.2.0 requires **TREK 4.0.0 or newer**; on an older instance the registry keeps serving
+Trip Segments 1.3.0 requires **TREK 4.0.0 or newer**; on an older instance the registry keeps serving
 1.1.0 instead. Install from the registry or sideload the packed zip, then activate it in Admin →
-Plugins and approve the permissions listed above. There is nothing else to configure — no API keys,
-no settings, no external services are contacted.
+Plugins and approve the permissions listed above. No API keys and no external services are
+contacted; the one setting is described below and has a working default.
 
 Open any trip and you will find a Segments tab immediately after Plan; it is also addressable
 directly as `?tab=plugin:trip-segments`, so it can be a bookmark or a startup destination. Use Add leg to draw your

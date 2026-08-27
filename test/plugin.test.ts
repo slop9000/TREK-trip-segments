@@ -36,6 +36,21 @@ describe('manifest and code agree', () => {
     }
   });
 
+  /**
+   * scope MUST be literally 'user'. The server coerces anything else to
+   * 'instance' (install/manifest.ts), and an instance-scoped value is stored
+   * where ctx.settings.get cannot reach it — the field would render, accept a
+   * value, and read undefined forever with no error.
+   */
+  it('declares the tint-mode setting as a per-user select', () => {
+    const field = manifest.settings?.find((s) => s.key === 'tintMode');
+
+    expect(field).toBeDefined();
+    expect(field?.scope).toBe('user');
+    expect(field?.input_type).toBe('select');
+    expect(field?.options?.map((o) => o.value)).toEqual(['full-day', 'header-badge', 'badge-only', 'off']);
+  });
+
   it('declares db:own and db:read:trips, which every route depends on', () => {
     expect(manifest.permissions).toContain('db:own');
     expect(manifest.permissions).toContain('db:read:trips');
@@ -74,12 +89,12 @@ describe('manifest and code agree', () => {
  * 1.6.0 these assertions could not exist -- 1.5.0's HOOK_PERMISSION knew none of
  * these three, so the lookup came back undefined and nothing was enforced.
  */
-describe('provider hooks the host can actually reach', () => {
-  const SEGMENTS = [
+const SEGMENTS = [
     { id: 1, trip_id: 1, name: 'Tokyo', color: '#4F46E5', tone: 'default', start_day: 1, end_day: 3, created_at: 'x', updated_at: 'x' },
     { id: 2, trip_id: 1, name: 'Kyoto', color: '#059669', tone: 'success', start_day: 5, end_day: 8, created_at: 'x', updated_at: 'x' },
-  ];
+];
 
+describe('provider hooks the host can actually reach', () => {
   const withSegments = () => hostFor([1], { [SQL_LIST]: SEGMENTS });
 
   it('tints every day of every leg, in that leg\'s own colour', async () => {
@@ -122,6 +137,64 @@ describe('provider hooks the host can actually reach', () => {
     expect(await driver.hook('dayTintProvider', 'getDayTints', 1)).toEqual([]);
     expect(await driver.hook('dayScheduleProvider', 'getSchedule', 1)).toEqual([]);
     expect(await driver.hook('mapLayerProvider', 'getLayers', 1)).toEqual([]);
+  });
+
+  /**
+   * End to end through the settings channel.
+   *
+   * `actingUserId` AND `userSettings` must BOTH be set: the mock builds its ctx
+   * from the acting user, and settings.get resolves to undefined without one —
+   * so omitting it would leave a test that passes while proving nothing.
+   */
+  describe('the day-tint mode setting', () => {
+    const hostWith = (userSettings: Record<string, unknown>) =>
+      createMockHost({
+        actingUserId: 1,
+        grants: manifest.permissions,
+        userSettings,
+        trips: {
+          1: {
+            members: [1],
+            data: { id: 1, title: 'Japan', start_date: '2026-04-10', end_date: '2026-04-21' },
+            days: makeDays(12, { startDate: '2026-04-10' }),
+            reservations: [],
+            accommodations: [],
+          },
+        },
+        queryResults: { [SQL_LIST]: SEGMENTS },
+      });
+
+    const tints = (userSettings: Record<string, unknown>) =>
+      hostWith(userSettings).run(asSdkPlugin(plugin)).hook<Array<Record<string, unknown>>>(
+        'dayTintProvider',
+        'getDayTints',
+        1,
+      );
+
+    it('paints the whole day when the user chose full-day', async () => {
+      const [tint] = await tints({ tintMode: 'full-day' });
+
+      expect(tint).toMatchObject({ color: '#4F46E5', label: 'Tokyo' });
+      expect(tint).not.toHaveProperty('headerColor');
+    });
+
+    it('contributes nothing when the user turned the tint off', async () => {
+      expect(await tints({ tintMode: 'off' })).toEqual([]);
+    });
+
+    // The upgrade path: 1.2.0 installs have no stored value at all.
+    it('falls back to header and badge when the setting was never chosen', async () => {
+      const [tint] = await tints({});
+
+      expect(tint).toMatchObject({ headerColor: '#4F46E5', badgeColor: '#4F46E5' });
+      expect(tint).not.toHaveProperty('color');
+    });
+
+    it('falls back to header and badge for a value it does not recognise', async () => {
+      const [tint] = await tints({ tintMode: 'whole-day' });
+
+      expect(tint).toMatchObject({ headerColor: '#4F46E5', badgeColor: '#4F46E5' });
+    });
   });
 
   /**

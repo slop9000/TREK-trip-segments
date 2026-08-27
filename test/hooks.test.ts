@@ -10,6 +10,7 @@ import { buildCards } from '../src/server/hooks/trip-card';
 import { MAX_SEGMENTS_PER_TRIP } from '../src/shared/limits';
 import type { HostDay } from '../src/shared/host-types';
 import type { Point } from '../src/server/geometry';
+import { DEFAULT_TINT_MODE, coerceTintMode } from '../src/shared/types';
 import type { SegmentRow } from '../src/shared/types';
 
 /** Host caps, restated here so a test failure names the real limit. */
@@ -352,6 +353,9 @@ describe('dayTintProvider', () => {
    * Header and badge, never the activity list. Sending `color` would be the
    * shorthand for "every region" and would wash the activity list too, so its
    * absence is the feature, not an omission.
+   *
+   * This is also the DEFAULT mode, so this doubles as the upgrade guarantee: an
+   * install that never touches the new setting emits exactly what 1.2.0 emitted.
    */
   it('tints the header and badge, leaving the activity list alone', () => {
     const [tint] = buildTints(resolveAll([row(1, 1, 1, 'Tokyo')], idx), idx);
@@ -362,6 +366,78 @@ describe('dayTintProvider', () => {
     expect(tint?.tone).toBeUndefined();
     expect(tint?.activityColor).toBeUndefined();
     expect(tint?.activityTone).toBeUndefined();
+  });
+
+  describe('tint mode', () => {
+    const one = () => resolveAll([row(1, 1, 1, 'Tokyo')], idx);
+
+    /**
+     * `full-day` sends the `color` shorthand rather than naming three regions.
+     * The host's normalize() spreads it across badge + header + activity, so the
+     * output is identical and the payload smaller — but it means the named keys
+     * must be ABSENT, or they would override the shorthand per region.
+     */
+    it('full-day sends the shorthand and no named region', () => {
+      const [tint] = buildTints(one(), idx, 'full-day');
+
+      expect(tint?.color).toBe('#4F46E5');
+      expect(tint?.headerColor).toBeUndefined();
+      expect(tint?.badgeColor).toBeUndefined();
+      expect(tint?.activityColor).toBeUndefined();
+      expect(tint?.label).toBe('Tokyo');
+    });
+
+    it('badge-only names the badge and nothing else', () => {
+      const [tint] = buildTints(one(), idx, 'badge-only');
+
+      expect(tint?.badgeColor).toBe('#4F46E5');
+      expect(tint?.headerColor).toBeUndefined();
+      expect(tint?.color).toBeUndefined();
+      expect(tint?.activityColor).toBeUndefined();
+    });
+
+    /**
+     * `off` must be an EMPTY LIST, never an entry carrying only a label. The
+     * host's normalize() does `if (painted.length === 0) badge = header =
+     * activity = 'default'`, so a colourless entry paints all three regions
+     * indigo — the exact opposite of off.
+     */
+    it('off contributes nothing at all, rather than an uncoloured entry', () => {
+      expect(buildTints(resolveAll([row(1, 1, 5)], idx), idx, 'off')).toEqual([]);
+    });
+
+    it('every mode that paints anything includes the badge, because mobile paints only that', () => {
+      for (const mode of ['full-day', 'header-badge', 'badge-only'] as const) {
+        const [tint] = buildTints(one(), idx, mode);
+        const paintsBadge = tint?.badgeColor !== undefined || tint?.color !== undefined;
+        expect(paintsBadge, `${mode} would be invisible on a phone`).toBe(true);
+      }
+    });
+
+    it('defaults to header-badge when no mode is given', () => {
+      expect(buildTints(one(), idx)).toEqual(buildTints(one(), idx, DEFAULT_TINT_MODE));
+      expect(DEFAULT_TINT_MODE).toBe('header-badge');
+    });
+  });
+
+  /**
+   * The stored value is an arbitrary string the host hands back. A value written
+   * under an option a later manifest removes outlives that option, so anything
+   * unrecognised must land on the default rather than on a louder mode.
+   */
+  describe('coerceTintMode', () => {
+    it('passes through every declared option', () => {
+      for (const mode of ['full-day', 'header-badge', 'badge-only', 'off'] as const) {
+        expect(coerceTintMode(mode)).toBe(mode);
+      }
+    });
+
+    it.each([undefined, null, '', 'whole-day', 'FULL-DAY', 42, {}, []])(
+      'falls back to the default for %p',
+      (value) => {
+        expect(coerceTintMode(value)).toBe(DEFAULT_TINT_MODE);
+      },
+    );
   });
 
   it('uses one leg colour across both tinted regions', () => {

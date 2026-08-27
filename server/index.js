@@ -958,8 +958,15 @@ async function getSchedule(tripId, ctx) {
   }
 }
 
+// src/shared/types.ts
+var DEFAULT_TINT_MODE = "header-badge";
+function coerceTintMode(value) {
+  return value === "full-day" || value === "header-badge" || value === "badge-only" || value === "off" ? value : DEFAULT_TINT_MODE;
+}
+
 // src/server/hooks/day-tint.ts
-function buildTints(views, idx) {
+function buildTints(views, idx, mode = DEFAULT_TINT_MODE) {
+  if (mode === "off") return [];
   const out = [];
   for (const view of views) {
     if (view.effStart === null || view.effEnd === null) continue;
@@ -968,18 +975,29 @@ function buildTints(views, idx) {
       if (out.length >= DAY_TINT_MAX) return out;
       const dayId = idx.dayIdByPos[pos - 1];
       if (dayId === void 0) continue;
-      out.push({ dayId, headerColor: view.color, badgeColor: view.color, label });
+      out.push(
+        mode === "full-day" ? { dayId, color: view.color, label } : mode === "badge-only" ? { dayId, badgeColor: view.color, label } : { dayId, headerColor: view.color, badgeColor: view.color, label }
+      );
     }
   }
   return out;
+}
+async function readTintMode(ctx) {
+  try {
+    return coerceTintMode(await ctx.settings?.get("tintMode"));
+  } catch {
+    return DEFAULT_TINT_MODE;
+  }
 }
 async function getDayTints(tripId, ctx) {
   try {
     await ensureSchema(ctx);
     const rows2 = await listSegments(ctx, tripId);
     if (rows2.length === 0) return [];
+    const mode = await readTintMode(ctx);
+    if (mode === "off") return [];
     const idx = buildDayIndex(await ctx.trips.getDays(tripId));
-    return buildTints(resolveAll(rows2, idx), idx);
+    return buildTints(resolveAll(rows2, idx), idx, mode);
   } catch (err) {
     ctx.log.warn("dayTintProvider failed", {
       tripId,

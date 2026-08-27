@@ -149,3 +149,30 @@ export interface DetailPayload {
   bookings: DetailBooking[];
   stays: DetailStay[];
 }
+
+/**
+ * Which regions of a day the tint hook paints, chosen per user in plugin settings.
+ *
+ * `full-day` uses the host's `color` shorthand, which `normalize()` spreads across
+ * badge + header + activity server-side — identical output to naming all three and
+ * a smaller payload. The others name regions explicitly.
+ *
+ * Every mode except `off` includes the badge, deliberately: mobile paints ONLY the
+ * badge region, so a mode without it would be a silent no-op on phones.
+ */
+export type TintMode = 'full-day' | 'header-badge' | 'badge-only' | 'off';
+
+/** What 1.2.0 shipped. Upgrades must look identical until the user chooses otherwise. */
+export const DEFAULT_TINT_MODE: TintMode = 'header-badge';
+
+/**
+ * The stored value is an arbitrary string from the host's settings table. The host
+ * filters writes to declared keys, but a value stored under an option a later
+ * manifest removes survives, so never trust it — anything unrecognised, missing or
+ * of the wrong type falls back to the default rather than to a louder mode.
+ */
+export function coerceTintMode(value: unknown): TintMode {
+  return value === 'full-day' || value === 'header-badge' || value === 'badge-only' || value === 'off'
+    ? value
+    : DEFAULT_TINT_MODE;
+}
