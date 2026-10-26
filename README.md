@@ -52,6 +52,7 @@ four semantic tones, because neither hook carries a colour channel of its own.
 | `hook:map-layer-provider` | Draws one coloured line per leg on the trip map. |
 | `hook:pdf-section-provider` | Adds the leg summary section to the trip's PDF export. |
 | `hook:trip-card-provider` | Adds the leg-count badge to the trip card on the dashboard. |
+| `mcp:tools` | Publishes the five segment tools on TREK's MCP server, so an AI assistant connected to TREK can list and draw legs as the user it acts for. TREK shows this as "Publishes AI tools". |
 
 No personal data is stored. The plugin's database holds only trip ids, leg names, colours and day
 numbers, so there is no user data to export or erase.
@@ -80,19 +81,21 @@ The default matches what 1.2.0 did, so upgrading changes nothing until you pick 
 
 ## MCP tools
 
-The plugin declares tools to list, inspect, create, update and delete trip segments. Read this section
-as intent rather than as a shipped feature: **no released TREK exposes plugin-contributed MCP tools,
-4.0.0 included**, so nothing reads these declarations today and they change nothing about how the
-plugin behaves. They are kept so the feature is ready if host support lands.
+On TREK 5 the plugin publishes five tools on TREK's MCP server: `list_trip_segments`,
+`get_trip_segment`, `create_trip_segment`, `update_trip_segment` and `delete_trip_segment`. TREK
+advertises them as `plugin_trip-segments_<name>`. An assistant connected to TREK can then draw the
+legs of a long trip, or move them when plans change, without anyone opening the Segments tab.
 
-Were a host to serve them, the handlers run as the calling user and go through the same membership
-checks, validation, overlap guards and live-update broadcast as changes made in the Segments tab, and
-deleting removes only the segment, never the trip days, bookings or stays inside it.
+The tools call the same route handlers as the Segments tab, as the user the assistant acts for. They
+go through the same membership checks, validation, overlap guards and live-update broadcast, and
+deleting removes only the segment, never the trip days, bookings or stays inside it. Each tool is
+declared twice, in `capabilities.mcpTools` of the signed manifest and in the hook, because TREK only
+advertises a tool named in both; a test keeps the two copies identical.
 
 ## Setup
 
-Trip Segments 1.3.0 requires **TREK 4.0.0 or newer**; on an older instance the registry keeps serving
-1.1.0 instead. Install from the registry or sideload the packed zip, then activate it in Admin →
+Trip Segments 1.4.0 requires **TREK 5**, the first TREK that serves plugin MCP tools; TREK 4 refuses
+the `mcp:tools` permission, so a TREK 4 instance stays on 1.3.0 and an older one on 1.1.0. Install from the registry or sideload the packed zip, then activate it in Admin →
 Plugins and approve the permissions listed above. No API keys and no external services are
 contacted; the one setting is described below and has a working default.
 

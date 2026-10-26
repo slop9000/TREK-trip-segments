@@ -4,6 +4,7 @@ import { HOOK_PERMISSION, KNOWN_PERMISSIONS } from 'trek-plugin-sdk';
 import manifest from '../trek-plugin.json';
 import plugin from '../src/server/index';
 import { SQL_INSERT_IF_FREE, SQL_LIST } from '../src/server/repo';
+import { mcpTools } from '../src/server/mcp-tools';
 import { makeDays } from './helpers';
 
 describe('manifest and code agree', () => {
@@ -32,7 +33,7 @@ describe('manifest and code agree', () => {
    */
   it('never ships a permission outside the TREK line it targets', () => {
     for (const permission of manifest.permissions) {
-      expect(KNOWN_PERMISSIONS, `${permission} is not a permission TREK 4 knows`).toContain(permission);
+      expect(KNOWN_PERMISSIONS, `${permission} is not a permission TREK 5 knows`).toContain(permission);
     }
   });
 
@@ -220,13 +221,13 @@ describe('provider hooks the host can actually reach', () => {
 
 describe('MCP tools', () => {
   const tool = (name: string) => {
-    const found = plugin.mcpTools?.find((candidate) => candidate.name === name);
+    const found = mcpTools.find((candidate) => candidate.name === name);
     if (!found) throw new Error(`missing MCP tool ${name}`);
     return found;
   };
 
   it('declares a complete, collision-resistant segment tool set', () => {
-    expect(plugin.mcpTools?.map((candidate) => candidate.name)).toEqual([
+    expect(mcpTools.map((candidate) => candidate.name)).toEqual([
       'list_trip_segments',
       'get_trip_segment',
       'create_trip_segment',
@@ -251,6 +252,44 @@ describe('MCP tools', () => {
 
     expect(result).toMatchObject({ ok: true, segment: { id: 7, name: 'Tokyo', color: '#123ABC' } });
     expect(host.broadcasts).toHaveLength(1);
+  });
+
+  /**
+   * TREK advertises only the tools named in BOTH the signed manifest and the
+   * hook, so a schema edited in one place and not the other would ship a tool
+   * whose advertised arguments no longer match what its handler accepts.
+   */
+  it('declares in the manifest exactly the tools the hook serves', () => {
+    const declared = manifest.capabilities.mcpTools;
+    const served = mcpTools.map(({ name, description, inputSchema, annotations }) => ({
+      name,
+      description,
+      inputSchema,
+      annotations,
+    }));
+
+    expect(declared).toEqual(JSON.parse(JSON.stringify(served)));
+    expect(plugin.hooks?.mcpToolProvider?.tools).toEqual(served.map((t) => t.name));
+    expect(manifest.permissions).toContain('mcp:tools');
+  });
+
+  it('routes a hook call to its tool, with the prefix-free name TREK passes', async () => {
+    const host = hostFor([1], { [SQL_LIST]: SEGMENTS });
+
+    const result = await plugin.hooks?.mcpToolProvider?.callTool(
+      { name: 'list_trip_segments', args: { tripId: 1 } },
+      host.ctx as never,
+    );
+
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  it('turns an unknown tool name into a tool error', async () => {
+    const host = hostFor([1]);
+
+    await expect(
+      plugin.hooks?.mcpToolProvider?.callTool({ name: 'drop_everything', args: {} }, host.ctx as never),
+    ).rejects.toThrow('unknown tool drop_everything');
   });
 
   it('does not let an MCP caller manage a trip they cannot access', async () => {
