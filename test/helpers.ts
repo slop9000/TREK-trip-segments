@@ -33,7 +33,25 @@ export function realDbContext(): PluginContext & { close(): void } {
         db.exec(sql);
         return { applied: true };
       },
-      tx: async () => ({ results: [] }),
+      // All or nothing, like the host's PluginDataDb.tx: a statement that throws
+      // rolls back every earlier one in the batch.
+      tx: async (ops: Array<{ sql: string; args?: unknown[] }>) => {
+        db.exec('BEGIN');
+        try {
+          const results = ops.map((op) => {
+            const stmt = db.prepare(op.sql);
+            const args = (op.args ?? []) as never[];
+            return /^\s*(SELECT|WITH|VALUES)\b/i.test(op.sql) || /\bRETURNING\b/i.test(op.sql)
+              ? { rows: stmt.all(...args) as unknown[] }
+              : { changes: Number(stmt.run(...args).changes) };
+          });
+          db.exec('COMMIT');
+          return { results };
+        } catch (err) {
+          db.exec('ROLLBACK');
+          throw err;
+        }
+      },
     },
     trips: {
       getById: async () => null,

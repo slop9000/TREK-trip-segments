@@ -1,6 +1,6 @@
 import { isHexColor } from './palette';
 import { MAX_SEGMENTS_PER_TRIP, MAX_TRIP_DAYS, NAME_MAX } from './limits';
-import type { SegmentInput, SegmentRow } from './types';
+import type { RangeUpdate, SegmentInput, SegmentRow } from './types';
 
 /**
  * One validator, run in BOTH places.
@@ -61,6 +61,28 @@ export interface ValidateOptions {
   existing: readonly SegmentRow[];
   /** Set when editing, so the row does not collide with itself or count toward the limit. */
   editingId?: number;
+  /**
+   * New ranges for OTHER legs, saved together with this one, as planned by
+   * knock-on.ts. The check then runs against the trip as it will be AFTER the
+   * save: the input must not overlap any leg, and no moved leg may overlap
+   * another one either.
+   */
+  others?: readonly RangeUpdate[];
+}
+
+/** The stored rows with the other legs' new ranges swapped in. */
+function applyRangeUpdates(existing: readonly SegmentRow[], others: readonly RangeUpdate[]): SegmentRow[] {
+  const byId = new Map(others.map((u) => [u.id, u]));
+  return existing.map((row) => {
+    const update = byId.get(row.id);
+    return update ? { ...row, start_day: update.start_day, end_day: update.end_day } : row;
+  });
+}
+
+/** Does any moved leg collide with another leg once every update is applied? */
+function movedOverlap(world: readonly SegmentRow[], others: readonly RangeUpdate[], editingId?: number): boolean {
+  const legs = world.filter((r) => r.id !== editingId);
+  return others.some((u) => findOverlap(u, legs, u.id) !== null);
 }
 
 export function validateSegmentInput(input: SegmentInput, opts: ValidateOptions): IssueCode[] {
@@ -74,6 +96,9 @@ export function validateSegmentInput(input: SegmentInput, opts: ValidateOptions)
 
   const start = input.start_day;
   const end = input.end_day;
+  const others = opts.others ?? [];
+  const world = others.length > 0 ? applyRangeUpdates(opts.existing, others) : opts.existing;
+
   const rangeWellFormed =
     Number.isInteger(start) && Number.isInteger(end) && start >= 1 && end >= start && end <= MAX_TRIP_DAYS;
 
@@ -83,7 +108,10 @@ export function validateSegmentInput(input: SegmentInput, opts: ValidateOptions)
     // Drift is tolerated after the fact (a shortened trip clips a leg), but
     // creating one that already points past the end is just a mistake.
     issues.push('range_out_of_bounds');
-  } else if (findOverlap({ start_day: start, end_day: end }, opts.existing, opts.editingId)) {
+  } else if (
+    findOverlap({ start_day: start, end_day: end }, world, opts.editingId) ||
+    movedOverlap(world, others, opts.editingId)
+  ) {
     issues.push('overlap');
   }
 

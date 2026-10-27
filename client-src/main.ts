@@ -16,6 +16,7 @@ import { resetDetailExpansion } from './views/detail';
 import { resolveAll, uncoveredRanges } from '../src/shared/drift';
 import { suggestColor, toneForColor } from '../src/shared/palette';
 import type { DayIndex, OverviewPayload, SegmentInput, SegmentRow, SegmentView } from '../src/shared/types';
+import type { KnockOnSave } from '../src/shared/knock-on';
 import type { ShellActions } from './views/shell';
 
 const LAST_SEGMENT_KEY = 'openSegment';
@@ -53,6 +54,20 @@ function defaultDraft(data: OverviewPayload): SegmentInput {
 
 function draftFrom(view: SegmentView): SegmentInput {
   return { name: view.name, color: view.color, start_day: view.start_day, end_day: view.end_day };
+}
+
+/**
+ * The editor's picks as the update route takes them. The ranges the user saw go
+ * along as `expect_moved`, so a save whose plan has changed since is refused
+ * rather than applied differently.
+ */
+function knockOnBody(knockOn: KnockOnSave | undefined): Record<string, unknown> {
+  if (!knockOn) return {};
+  return {
+    ...(knockOn.picks.start ? { resolve_start: knockOn.picks.start } : {}),
+    ...(knockOn.picks.end ? { resolve_end: knockOn.picks.end } : {}),
+    expect_moved: knockOn.expected,
+  };
 }
 
 const actions: ShellActions = {
@@ -110,7 +125,7 @@ const actions: ShellActions = {
     collapseDetail();
   },
 
-  async onSave(input, id) {
+  async onSave(input, id, knockOn) {
     const tripId = getState().tripId;
     if (tripId === null) return;
 
@@ -122,6 +137,10 @@ const actions: ShellActions = {
         if (editing) {
           const target = rows.find((r) => r.id === id);
           if (target) Object.assign(target, input);
+          for (const moved of knockOn?.expected ?? []) {
+            const row = rows.find((r) => r.id === moved.id);
+            if (row) Object.assign(row, { start_day: moved.start_day, end_day: moved.end_day });
+          }
         } else {
           // A placeholder id keeps the strip and list in sync until the real row
           // arrives; the reconcile that follows replaces it either way.
@@ -138,9 +157,9 @@ const actions: ShellActions = {
       },
       call: () =>
         editing
-          ? api('/segments', { method: 'PUT', body: { tripId, id, ...input } })
+          ? api('/segments', { method: 'PUT', body: { tripId, id, ...input, ...knockOnBody(knockOn) } })
           : api('/segments', { method: 'POST', body: { tripId, ...input } }),
-      successMessage: editing ? 'Leg updated.' : 'Leg added.',
+      successMessage: editing ? (knockOn?.expected.length ? 'Legs updated.' : 'Leg updated.') : 'Leg added.',
     });
 
     if (!ok) setState({ editor: { mode: editing ? 'edit' : 'create', ...(id !== undefined ? { id } : {}), draft: input, issues: [] } });

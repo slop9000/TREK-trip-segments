@@ -23,6 +23,13 @@ export interface SegmentInput {
   end_day: number;
 }
 
+/** A new range for an existing leg, without touching its name or colour. */
+export interface RangeUpdate {
+  id: number;
+  start_day: number;
+  end_day: number;
+}
+
 /**
  * `ok`          — the range fits the trip as it stands.
  * `clipped`     — it starts inside the trip but runs past the last day; we use

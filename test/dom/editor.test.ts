@@ -290,3 +290,172 @@ describe('expanding a leg in place', () => {
     expect(panel?.textContent).toContain('Loading this leg');
   });
 });
+
+describe('making room when an edit runs into another leg', () => {
+  const legs = () => [view(1, 1, 4, 'Tokyo'), view(2, 5, 8, 'Kyoto'), view(3, 9, 12, 'Osaka')];
+
+  function open(id: number, onSave = vi.fn(), rows = legs()) {
+    const leg = rows.find((l) => l.id === id)!;
+    renderEditor(
+      node,
+      editorState({ mode: 'edit', id, draft: { name: leg.name, color: leg.color, start_day: leg.start_day, end_day: leg.end_day } }),
+      overview(rows),
+      { onSave, onCancel: vi.fn() },
+    );
+    return onSave;
+  }
+
+  const selects = () => node.querySelectorAll('select') as NodeListOf<HTMLSelectElement>;
+  const radios = () => [...node.querySelectorAll<HTMLButtonElement>('[role="radio"]')];
+  const checked = () => radios().find((r) => r.getAttribute('aria-checked') === 'true');
+  const save = () => [...node.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Save'))!;
+  const radio = (title: string) => radios().find((r) => r.querySelector('.seg-choice-title')?.textContent === title)!;
+
+  function setDay(which: 0 | 1, day: number): void {
+    const select = selects()[which]!;
+    select.value = String(day);
+    select.dispatchEvent(new Event('change'));
+  }
+
+  it('offers a choice instead of the overlap error, defaulting to pushing the later legs back', () => {
+    open(1);
+    setDay(1, 6);
+
+    expect(node.querySelector('[role="radiogroup"]')).not.toBeNull();
+    expect(radios().map((r) => r.querySelector('.seg-choice-title')?.textContent)).toEqual([
+      'Push the later legs back',
+      'Take the days from Kyoto',
+    ]);
+    expect(checked()).toBe(radios()[0]);
+    expect(node.querySelector('.seg-knock .trek-label')?.textContent).toBe('Day 5–6 already belong to Kyoto.');
+    expect(node.querySelector('.seg-issues')?.textContent).toBe('');
+    expect(save().disabled).toBe(false);
+    expect(save().textContent).toBe('Save and change 2 other legs');
+  });
+
+  it('lists exactly which legs change, and says when one gets shorter', () => {
+    open(1);
+    setDay(1, 6);
+
+    const rows = [...radios()[0]!.querySelectorAll('.seg-choice-change')].map((r) => r.textContent);
+    expect(rows).toEqual(['KyotoDay 5–8 → Day 7–10', 'OsakaDay 9–12 → Day 11–12(2 days shorter)']);
+  });
+
+  it('switches to taking the days from the neighbour and saves exactly that', () => {
+    const onSave = open(1);
+    setDay(1, 6);
+
+    radio('Take the days from Kyoto').click();
+    expect(checked()).toBe(radio('Take the days from Kyoto'));
+    expect(radio('Push the later legs back').classList.contains('seg-choice--on')).toBe(false);
+    expect(save().textContent).toBe('Save and change 1 other leg');
+
+    save().click();
+    expect(onSave).toHaveBeenCalledWith(
+      { name: 'Tokyo', color: '#4F46E5', start_day: 1, end_day: 6 },
+      1,
+      { picks: { end: 'take' }, expected: [{ id: 2, start_day: 7, end_day: 8 }] },
+    );
+  });
+
+  it('shows an option that would empty a leg as unavailable, with the reason', () => {
+    open(1, vi.fn(), legs().slice(0, 2));
+    setDay(1, 8);
+
+    const take = radio('Take the days from Kyoto');
+    expect(take.disabled).toBe(true);
+    expect(take.textContent).toContain('Kyoto would have no days left.');
+    expect(checked()).toBe(radio('Push the later legs back'));
+  });
+
+  it('falls back to the overlap error when every option would empty a leg', () => {
+    open(1);
+    setDay(1, 9);
+
+    expect(radios().every((r) => r.disabled)).toBe(true);
+    expect(node.querySelector('.seg-knock .trek-label')?.textContent).toBe(
+      'Day 5–9 already belong to Kyoto and the legs after it.',
+    );
+    expect(radio('Push the later legs back').textContent).toContain('Osaka would have no days left.');
+    expect(save().disabled).toBe(true);
+    expect(save().textContent).toBe('Save');
+    expect(node.querySelector('.seg-issues')?.textContent).toContain('already belong to another leg');
+  });
+
+  it('offers give, pull and gap when the leg gets shorter, and Save alone for a gap', () => {
+    const onSave = open(1);
+    setDay(1, 2);
+
+    expect(radios().map((r) => r.querySelector('.seg-choice-title')?.textContent)).toEqual([
+      'Give the days to Kyoto',
+      'Pull the later legs forward',
+      'Leave a gap',
+    ]);
+    expect(save().textContent).toBe('Save and change 1 other leg');
+
+    radio('Pull the later legs forward').click();
+    expect(save().textContent).toBe('Save and change 2 other legs');
+
+    radio('Leave a gap').click();
+    expect(save().textContent).toBe('Save');
+    save().click();
+    // The pick still goes along, so the server can tell if it no longer means "nothing moves".
+    expect(onSave).toHaveBeenCalledWith({ name: 'Tokyo', color: '#4F46E5', start_day: 1, end_day: 2 }, 1, {
+      picks: { end: 'gap' },
+      expected: [],
+    });
+  });
+
+  it('asks about the first day too, defaulting to taking from the previous leg', () => {
+    open(2);
+    setDay(0, 3);
+
+    expect(node.querySelector('.seg-knock .trek-label')?.textContent).toBe('Day 3–4 already belong to Tokyo.');
+    expect(checked()?.querySelector('.seg-choice-title')?.textContent).toBe('Take the days from Tokyo');
+  });
+
+  it('keeps the options and the pick while the user types a new name', () => {
+    open(1);
+    setDay(1, 6);
+    radio('Take the days from Kyoto').click();
+    const before = radios();
+
+    const input = node.querySelector('input') as HTMLInputElement;
+    input.value = 'Tokyo and Yokohama';
+    input.dispatchEvent(new Event('input'));
+
+    expect(radios()).toEqual(before);
+    expect(checked()).toBe(radio('Take the days from Kyoto'));
+  });
+
+  it('moves the pick with the arrow keys, as a radio group does', () => {
+    open(1);
+    setDay(1, 2);
+    radios()[0]!.focus();
+
+    radios()[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(checked()).toBe(radio('Pull the later legs forward'));
+    expect(document.activeElement).toBe(radio('Pull the later legs forward'));
+    expect(radios().map((r) => r.tabIndex)).toEqual([-1, 0, -1]);
+  });
+
+  it('removes the choice again when the range goes back to fitting', () => {
+    open(1);
+    setDay(1, 6);
+    setDay(1, 4);
+
+    expect(radios()).toHaveLength(0);
+    expect(save().textContent).toBe('Save');
+  });
+
+  it('never offers a choice when creating a leg', () => {
+    renderEditor(node, editorState({ draft: { name: 'New', color: '#4F46E5', start_day: 3, end_day: 6 } }), overview(legs()), {
+      onSave: vi.fn(),
+      onCancel: vi.fn(),
+    });
+
+    expect(radios()).toHaveLength(0);
+    expect(node.querySelector('.seg-issues')?.textContent).toContain('already belong to another leg');
+  });
+});

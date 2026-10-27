@@ -85,6 +85,8 @@ On TREK 5 the plugin publishes five tools on TREK's MCP server: `list_trip_segme
 `get_trip_segment`, `create_trip_segment`, `update_trip_segment` and `delete_trip_segment`. TREK
 advertises them as `plugin_trip-segments_<name>`. An assistant connected to TREK can then draw the
 legs of a long trip, or move them when plans change, without anyone opening the Segments tab.
+`update_trip_segment` takes the same choice as the editor through optional `resolve_end` and
+`resolve_start` fields.
 
 The tools call the same route handlers as the Segments tab, as the user the assistant acts for. They
 go through the same membership checks, validation, overlap guards and live-update broadcast, and
@@ -94,7 +96,7 @@ advertises a tool named in both; a test keeps the two copies identical.
 
 ## Setup
 
-Trip Segments 1.4.0 requires **TREK 5**, the first TREK that serves plugin MCP tools; TREK 4 refuses
+Trip Segments 1.5.0 requires **TREK 5**, the first TREK that serves plugin MCP tools; TREK 4 refuses
 the `mcp:tools` permission, so a TREK 4 instance stays on 1.3.0 and an older one on 1.1.0. Install from the registry or sideload the packed zip, then activate it in Admin →
 Plugins and approve the permissions listed above. No API keys and no external services are
 contacted; the one setting is described below and has a working default.
@@ -102,7 +104,10 @@ contacted; the one setting is described below and has a working default.
 Open any trip and you will find a Segments tab immediately after Plan; it is also addressable
 directly as `?tab=plugin:trip-segments`, so it can be a bookmark or a startup destination. Use Add leg to draw your
 first one: give it a name, pick a colour, and choose the first and last day from the dropdowns. Keep
-adding legs until the colour bar across the top covers the parts of the trip you care about. Deleting
+adding legs until the colour bar across the top covers the parts of the trip you care about. When you
+edit a leg so it runs into its neighbour, or frees days next to one, the editor asks how the other
+legs should make room (push the later legs back, take the days from the neighbour, give them back,
+or leave a gap), lists exactly which legs change, and saves them all in one step. Deleting
 a leg only deletes the leg; the days, bookings and stays inside it are untouched, because the plugin
 never writes to TREK's own data.
 

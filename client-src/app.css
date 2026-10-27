@@ -257,6 +257,87 @@ html[data-fill] body.trek-ui {
   visibility: hidden;
 }
 
+/* --- knock-on choices ------------------------------------------------------ */
+
+/* Shown in the editor when a new range runs into a neighbour or frees days next
+   to one. Each option is a radio card; the selected one borrows the legend's
+   selected state (primary-text border on the hover fill), so "chosen" looks
+   the same everywhere in the tab. */
+.seg-knock:empty {
+  display: none;
+}
+
+.seg-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.seg-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-faint);
+  border-radius: var(--radius-md, 10px);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms var(--trek-ease, ease), border-color 120ms var(--trek-ease, ease);
+}
+
+.seg-choice:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.seg-choice--on {
+  border-color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* The kit's own unavailable state (.trek-select-option[aria-disabled]). The
+   reason stays readable because it is the option's summary line. */
+.seg-choice:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.seg-choice-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.seg-choice-sub {
+  font-size: 12px;
+}
+
+.seg-choice-changes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 2px;
+}
+
+.seg-choice-change {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  column-gap: 8px;
+  row-gap: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.seg-choice-name {
+  font-weight: 500;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* --- detail --------------------------------------------------------------- */
 
 .seg-detail-head {
@@ -749,6 +830,15 @@ html[data-fill] body.trek-ui {
 
 [data-form-factor='phone'] .seg-cal-cell--in:active {
   filter: brightness(1.06);
+}
+
+[data-form-factor='phone'] .seg-choice {
+  min-height: 44px;
+  padding: 12px 14px;
+}
+
+[data-form-factor='phone'] .seg-choice:active:not(:disabled) {
+  background: var(--bg-hover);
 }
 
 /* The kit drops the shadow from .trek-card on the phone — a drop shadow over

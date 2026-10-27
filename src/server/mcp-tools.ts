@@ -1,3 +1,4 @@
+import { RESOLUTIONS } from '../shared/knock-on';
 import { MAX_TRIP_DAYS, NAME_MAX } from '../shared/limits';
 import { routes } from './routes';
 import type {
@@ -46,6 +47,26 @@ const SEGMENT_PROPERTIES = {
   },
 } as const;
 
+/**
+ * Optional on update: how neighbouring segments make room when an edit runs
+ * into them or frees days next to them. Mirrors the choice the Segments tab
+ * offers, and is planned and validated server-side (src/shared/knock-on.ts).
+ */
+const RESOLVE_PROPERTIES = {
+  resolve_end: {
+    type: 'string',
+    enum: RESOLUTIONS,
+    description:
+      'When end_day moves. Into the next segment: push moves every later segment later by the overlap (the last one is cut at the final trip day), take shortens only the next segment. Away from a directly following segment: give extends the next segment back, pull moves every later segment earlier (the last keeps its end), gap leaves the days uncovered. Without it the behaviour is unchanged: an overlap is refused and freed days are left uncovered.',
+  },
+  resolve_start: {
+    type: 'string',
+    enum: RESOLUTIONS,
+    description:
+      'The same for start_day and the segments before: push moves every earlier segment earlier (the first is cut at day 1), take shortens only the previous one; give, pull and gap as for resolve_end.',
+  },
+} as const;
+
 const READ_ANNOTATIONS = {
   readOnlyHint: true,
   destructiveHint: false,
@@ -85,6 +106,26 @@ function responseBody(response: PluginResponse): Record<string, unknown> {
  * validation, overlap/limit guards, broadcasts and future route fixes on one
  * behaviour path instead of growing a privileged second implementation.
  */
+/**
+ * A refused call must reach the MCP client as a tool error, and only a throw
+ * becomes one (host-types.ts). A failure envelope returned normally would read
+ * as a successful call whose result happens to mention a failure.
+ */
+function refusal(path: string, status: number, payload: Record<string, unknown>): Error {
+  const issues = Array.isArray(payload['issues']) ? ` (${payload['issues'].join(', ')})` : '';
+  const detail = typeof payload['detail'] === 'string' ? `: ${payload['detail']}` : '';
+  const what = STATUS_TEXT[status] ?? 'failed';
+  return new Error(`${path} ${what} [${status}]${detail}${issues}`);
+}
+
+const STATUS_TEXT: Record<number, string> = {
+  400: 'rejected a malformed request',
+  404: 'found no such trip or segment visible to this user',
+  409: 'conflicts with the current segments; list them again and retry',
+  422: 'rejected invalid values',
+  500: 'failed inside the plugin',
+};
+
 async function invoke(
   method: PluginRoute['method'],
   path: string,
@@ -108,8 +149,8 @@ async function invoke(
   };
   const response = await route(method, path).handler(request, ctx);
   const payload = responseBody(response);
-  const ok = response.status >= 200 && response.status < 300;
-  return ok ? { ok: true, ...payload } : { ok: false, status: response.status, ...payload };
+  if (response.status < 200 || response.status >= 300) throw refusal(`${method} ${path}`, response.status, payload);
+  return { ok: true, ...payload };
 }
 
 export const mcpTools: PluginMcpTool[] = [
@@ -155,10 +196,10 @@ export const mcpTools: PluginMcpTool[] = [
   {
     name: 'update_trip_segment',
     description:
-      'Replace the name, colour and inclusive day range of an existing trip segment. All editable fields are required.',
+      'Replace the name, colour and inclusive day range of an existing trip segment. All editable fields are required. Pass resolve_end or resolve_start to move neighbouring segments in the same atomic save; without them an overlap is refused as before.',
     inputSchema: {
       type: 'object',
-      properties: { tripId: TRIP_ID, id: SEGMENT_ID, ...SEGMENT_PROPERTIES },
+      properties: { tripId: TRIP_ID, id: SEGMENT_ID, ...SEGMENT_PROPERTIES, ...RESOLVE_PROPERTIES },
       required: ['tripId', 'id', 'name', 'color', 'start_day', 'end_day'],
       additionalProperties: false,
     },

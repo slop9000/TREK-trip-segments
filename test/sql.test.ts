@@ -6,18 +6,22 @@ import {
   SQL_GET,
   SQL_INSERT_IF_FREE,
   SQL_LIST,
+  SQL_UPDATE_EDITED,
   SQL_UPDATE_IF_FREE,
+  SQL_UPDATE_RANGE,
   countSegments,
   deleteSegment,
   getSegment,
   insertSegmentIfFree,
   listSegments,
+  sqlAbortIfLayoutBroken,
   sqlListForTrips,
   updateSegmentIfFree,
+  updateSegmentWithOthers,
 } from '../src/server/repo';
 import { MAX_SEGMENTS_PER_TRIP } from '../src/shared/limits';
 import { realDbContext } from './helpers';
-import type { SegmentInput } from '../src/shared/types';
+import type { SegmentInput, SegmentRow } from '../src/shared/types';
 
 const seg = (name: string, start: number, end: number): SegmentInput => ({
   name,
@@ -51,6 +55,9 @@ describe('SQL safety', () => {
     MIGRATION_SQL,
     COLOR_MIGRATION_SQL,
     'sqlListForTrips(3)': sqlListForTrips(3),
+    SQL_UPDATE_EDITED,
+    SQL_UPDATE_RANGE,
+    'sqlAbortIfLayoutBroken(3)': sqlAbortIfLayoutBroken(3),
   };
 
   it.each(Object.entries(statements))('%s uses no forbidden keyword', (_name, sql) => {
@@ -223,6 +230,114 @@ describe('read and delete', () => {
 
     const rows = await ctx.db.query<{ trip_id: number; name: string }>(sqlListForTrips(3), 1, 2, 3);
     expect(rows.map((r) => r.trip_id).sort()).toEqual([1, 3]);
+    ctx.close();
+  });
+});
+
+describe('knock-on save', () => {
+  async function tiled() {
+    const ctx = await freshDb();
+    const a = await insertSegmentIfFree(ctx, 1, seg('Tokyo', 1, 5));
+    const b = await insertSegmentIfFree(ctx, 1, seg('Kyoto', 6, 10));
+    const c = await insertSegmentIfFree(ctx, 1, seg('Osaka', 11, 15));
+    // Another trip with the same days, which must never be touched or counted.
+    await insertSegmentIfFree(ctx, 2, seg('Elsewhere', 1, 20));
+    return { ctx, a: a!, b: b!, c: c! };
+  }
+
+  /** A leg's move, planned from where it is now; `to` is filled in by the save. */
+  const from = (row: SegmentRow) => ({ id: row.id, from: [row.start_day, row.end_day] as [number, number], to: [0, 0] as [number, number] });
+
+  const ranges = async (ctx: Awaited<ReturnType<typeof freshDb>>, tripId = 1) =>
+    (await listSegments(ctx, tripId)).map((r) => `${r.name} ${r.start_day}-${r.end_day}`);
+
+  /**
+   * The reason this exists: one statement at a time, the first update of a
+   * push always collides with the leg that has not moved yet.
+   */
+  it('saves a layout that no order of single guarded updates could reach', async () => {
+    const { ctx, a, b, c } = await tiled();
+    expect(await updateSegmentIfFree(ctx, 1, a.id, seg('Tokyo', 1, 7))).toBeNull();
+
+    const saved = await updateSegmentWithOthers(ctx, 1, from(a), seg('Tokyo longer', 1, 7), [
+      { id: b.id, from: from(b).from, to: [8, 12] },
+      { id: c.id, from: from(c).from, to: [13, 17] },
+    ]);
+
+    expect(saved).toMatchObject({ id: a.id, name: 'Tokyo longer', start_day: 1, end_day: 7 });
+    expect(await ranges(ctx)).toEqual(['Tokyo longer 1-7', 'Kyoto 8-12', 'Osaka 13-17']);
+    expect(await ranges(ctx, 2)).toEqual(['Elsewhere 1-20']);
+    ctx.close();
+  });
+
+  it('leaves the other legs\' names and colours alone', async () => {
+    const { ctx, a, b } = await tiled();
+    await updateSegmentWithOthers(ctx, 1, from(a), seg('Tokyo', 1, 6), [{ id: b.id, from: from(b).from, to: [7, 10] }]);
+
+    expect(await getSegment(ctx, 1, b.id)).toMatchObject({ name: 'Kyoto', color: '#4F46E5', start_day: 7 });
+    ctx.close();
+  });
+
+  it('writes nothing at all when the final layout overlaps', async () => {
+    const { ctx, a, b } = await tiled();
+
+    // Kyoto moves, Osaka does not: Kyoto 8-12 now runs into Osaka 11-15.
+    const saved = await updateSegmentWithOthers(ctx, 1, from(a), seg('Tokyo', 1, 7), [
+      { id: b.id, from: from(b).from, to: [8, 12] },
+    ]);
+
+    expect(saved).toBeNull();
+    expect(await ranges(ctx)).toEqual(['Tokyo 1-5', 'Kyoto 6-10', 'Osaka 11-15']);
+    expect(await countSegments(ctx, 1)).toBe(3); // the guard's own row never lands either
+    ctx.close();
+  });
+
+  it('writes nothing when a touched leg moved since it was planned', async () => {
+    const { ctx, a, b } = await tiled();
+    const planned = { id: b.id, from: from(b).from, to: [8, 10] as [number, number] };
+    // Another tab shortens Kyoto after the plan was made from 6-10.
+    await ctx.db.exec('UPDATE segments SET end_day = 9 WHERE id = ?', b.id);
+
+    expect(await updateSegmentWithOthers(ctx, 1, from(a), seg('Tokyo', 1, 7), [planned])).toBeNull();
+    expect(await ranges(ctx)).toEqual(['Tokyo 1-5', 'Kyoto 6-9', 'Osaka 11-15']);
+    ctx.close();
+  });
+
+  it('rethrows a failure that is not the deliberate abort', async () => {
+    const { ctx, a, b } = await tiled();
+    ctx.db.tx = async () => {
+      throw new Error('database is locked');
+    };
+
+    await expect(
+      updateSegmentWithOthers(ctx, 1, from(a), seg('Tokyo', 1, 7), [{ id: b.id, from: from(b).from, to: [8, 10] }]),
+    ).rejects.toThrow('database is locked');
+    ctx.close();
+  });
+
+  it('writes nothing when a touched leg was deleted meanwhile', async () => {
+    const { ctx, a, b } = await tiled();
+    await deleteSegment(ctx, 1, b.id);
+
+    const saved = await updateSegmentWithOthers(ctx, 1, from(a), seg('Tokyo', 1, 7), [
+      { id: b.id, from: from(b).from, to: [8, 10] },
+    ]);
+
+    expect(saved).toBeNull();
+    expect(await ranges(ctx)).toEqual(['Tokyo 1-5', 'Osaka 11-15']);
+    ctx.close();
+  });
+
+  it('never reaches into another trip', async () => {
+    const { ctx, a } = await tiled();
+    const other = (await listSegments(ctx, 2))[0]!;
+
+    const saved = await updateSegmentWithOthers(ctx, 1, from(a), seg('Tokyo', 1, 5), [
+      { id: other.id, from: from(other).from, to: [16, 20] },
+    ]);
+
+    expect(saved).toBeNull();
+    expect(await ranges(ctx, 2)).toEqual(['Elsewhere 1-20']);
     ctx.close();
   });
 });

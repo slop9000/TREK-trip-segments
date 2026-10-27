@@ -549,6 +549,150 @@
     }
   });
 
+  // src/shared/knock-on.ts
+  function byPosition(a, b) {
+    return a.start_day - b.start_day || a.id - b.id;
+  }
+  function byFrom(a, b) {
+    return a.from[0] - b.from[0] || a.id - b.id;
+  }
+  function option(resolution, legs, dayCount, next) {
+    const changes = [];
+    let blockedBy = null;
+    legs.forEach((leg, i) => {
+      const raw = next(leg, i);
+      const moved = raw[0] !== leg.start_day || raw[1] !== leg.end_day;
+      const to = moved ? [raw[0], Math.min(raw[1], dayCount)] : raw;
+      const gone = to[1] < to[0] || to[1] < 1 || to[0] > dayCount;
+      if (gone && !blockedBy) blockedBy = { id: leg.id, name: leg.name };
+      if (moved) {
+        changes.push({ id: leg.id, name: leg.name, color: leg.color, from: [leg.start_day, leg.end_day], to });
+      }
+    });
+    changes.sort(byFrom);
+    return { resolution, changes, blockedBy, sameAs: null };
+  }
+  function choice(side, kind, span, shift, neighbour, options) {
+    for (const [i, o] of options.entries()) {
+      const twin = options.slice(0, i).find((earlier) => sameChanges(earlier.changes, o.changes));
+      o.sameAs = twin?.resolution ?? null;
+    }
+    return {
+      side,
+      kind,
+      days: span[1] - span[0] + 1,
+      span,
+      shift,
+      neighbour: {
+        id: neighbour.id,
+        name: neighbour.name,
+        color: neighbour.color,
+        range: [neighbour.start_day, neighbour.end_day]
+      },
+      options,
+      recommended: options.find((o) => !o.blockedBy)?.resolution ?? null
+    };
+  }
+  function sameChanges(a, b) {
+    return a.length === b.length && a.every((c, i) => c.id === b[i]?.id && c.to[0] === b[i]?.to[0] && c.to[1] === b[i]?.to[1]);
+  }
+  function planEnd(old, edited, later, dayCount) {
+    const [oldStart, oldEnd] = old;
+    const [newStart, newEnd] = edited;
+    if (later.length === 0) return null;
+    const inWay = later.filter((leg) => leg.end_day >= newStart);
+    const hit = inWay[0];
+    if (newEnd > oldEnd && hit && hit.start_day <= newEnd) {
+      const d = newEnd - hit.start_day + 1;
+      const lastHit = Math.max(...inWay.filter((leg) => leg.start_day <= newEnd).map((leg) => leg.end_day));
+      const span = [Math.max(newStart, hit.start_day), Math.min(newEnd, lastHit)];
+      return choice("end", "grow", span, d, hit, [
+        option("push", inWay, dayCount, (leg) => [leg.start_day + d, leg.end_day + d]),
+        option("take", [hit], dayCount, (leg) => [newEnd + 1, leg.end_day])
+      ]);
+    }
+    const next = later[0];
+    if (newEnd < oldEnd && next.start_day === oldEnd + 1) {
+      const freedFrom = Math.max(newEnd + 1, oldStart);
+      const d = oldEnd - freedFrom + 1;
+      const last = later.length - 1;
+      return choice("end", "shrink", [freedFrom, oldEnd], d, next, [
+        option("give", [next], dayCount, (leg) => [freedFrom, leg.end_day]),
+        option("pull", later, dayCount, (leg, i) => [leg.start_day - d, i === last ? leg.end_day : leg.end_day - d]),
+        option("gap", [], dayCount, (leg) => [leg.start_day, leg.end_day])
+      ]);
+    }
+    return null;
+  }
+  function planStart(old, edited, earlier, dayCount) {
+    const [oldStart, oldEnd] = old;
+    const [newStart, newEnd] = edited;
+    if (earlier.length === 0) return null;
+    const inWay = earlier.filter((leg) => leg.start_day <= newEnd);
+    const hit = inWay[0];
+    if (newStart < oldStart && hit && hit.end_day >= newStart) {
+      const d = hit.end_day - newStart + 1;
+      const firstHit = Math.min(...inWay.filter((leg) => leg.end_day >= newStart).map((leg) => leg.start_day));
+      const span = [Math.max(newStart, firstHit), Math.min(newEnd, hit.end_day)];
+      return choice("start", "grow", span, d, hit, [
+        option("take", [hit], dayCount, (leg) => [leg.start_day, newStart - 1]),
+        option("push", inWay, dayCount, (leg) => [Math.max(leg.start_day - d, 1), leg.end_day - d])
+      ]);
+    }
+    const prev = earlier[0];
+    if (newStart > oldStart && prev.end_day === oldStart - 1) {
+      const freedTo = Math.min(newStart - 1, oldEnd);
+      const d = freedTo - oldStart + 1;
+      const first = earlier.length - 1;
+      return choice("start", "shrink", [oldStart, freedTo], d, prev, [
+        option("give", [prev], dayCount, (leg) => [leg.start_day, freedTo]),
+        option("pull", earlier, dayCount, (leg, i) => [i === first ? leg.start_day : leg.start_day + d, leg.end_day + d]),
+        option("gap", [], dayCount, (leg) => [leg.start_day, leg.end_day])
+      ]);
+    }
+    return null;
+  }
+  function planKnockOn(edited, rows, dayCount) {
+    const original = rows.find((r) => r.id === edited.id);
+    if (!original) return { choices: [] };
+    const others = rows.filter((r) => r.id !== edited.id).sort(byPosition);
+    const inTrip = others.filter((r) => r.start_day <= dayCount);
+    const later = inTrip.filter((r) => r.start_day > original.end_day);
+    const earlier = inTrip.filter((r) => r.end_day < original.start_day).reverse();
+    const old = [original.start_day, original.end_day];
+    const range = [edited.start_day, edited.end_day];
+    const choices = [];
+    const start = planStart(old, range, earlier, dayCount);
+    if (start) choices.push(start);
+    const end = planEnd(old, range, later, dayCount);
+    if (end) choices.push(end);
+    return { choices };
+  }
+  function pickedOption(c, pick) {
+    const wanted = c.options.find((o) => o.resolution === pick && !o.blockedBy);
+    if (wanted) return wanted;
+    return c.options.find((o) => o.resolution === c.recommended) ?? null;
+  }
+  function toRangeUpdates(changes) {
+    return changes.map((c) => ({ id: c.id, start_day: c.to[0], end_day: c.to[1] }));
+  }
+  function plannedChanges(plan, picks, mode = "strict") {
+    const out = [];
+    for (const c of plan.choices) {
+      const pick = picks[c.side];
+      if (pick === void 0 && mode === "strict") continue;
+      const picked = mode === "lenient" ? pickedOption(c, pick) : c.options.find((o) => o.resolution === pick && !o.blockedBy);
+      if (!picked) return { ok: false, side: c.side, resolution: pick ?? null };
+      out.push(...picked.changes);
+    }
+    return { ok: true, changes: out.sort(byFrom) };
+  }
+  var init_knock_on = __esm({
+    "src/shared/knock-on.ts"() {
+      "use strict";
+    }
+  });
+
   // src/shared/validate.ts
   function isControl(codePoint) {
     return codePoint < 32 || codePoint === 127;
@@ -570,6 +714,17 @@
     }
     return null;
   }
+  function applyRangeUpdates(existing, others) {
+    const byId = new Map(others.map((u) => [u.id, u]));
+    return existing.map((row) => {
+      const update = byId.get(row.id);
+      return update ? { ...row, start_day: update.start_day, end_day: update.end_day } : row;
+    });
+  }
+  function movedOverlap(world, others, editingId) {
+    const legs = world.filter((r) => r.id !== editingId);
+    return others.some((u) => findOverlap(u, legs, u.id) !== null);
+  }
   function validateSegmentInput(input, opts) {
     const issues = [];
     const name = normalizeName(input.name);
@@ -578,12 +733,14 @@
     if (!isHexColor(input.color)) issues.push("color_invalid");
     const start = input.start_day;
     const end = input.end_day;
+    const others = opts.others ?? [];
+    const world = others.length > 0 ? applyRangeUpdates(opts.existing, others) : opts.existing;
     const rangeWellFormed = Number.isInteger(start) && Number.isInteger(end) && start >= 1 && end >= start && end <= MAX_TRIP_DAYS;
     if (!rangeWellFormed) {
       issues.push("range_invalid");
     } else if (end > opts.dayCount) {
       issues.push("range_out_of_bounds");
-    } else if (findOverlap({ start_day: start, end_day: end }, opts.existing, opts.editingId)) {
+    } else if (findOverlap({ start_day: start, end_day: end }, world, opts.editingId) || movedOverlap(world, others, opts.editingId)) {
       issues.push("overlap");
     }
     if (opts.editingId === void 0 && opts.existing.length >= MAX_SEGMENTS_PER_TRIP) {
@@ -600,6 +757,65 @@
   });
 
   // client-src/views/editor.ts
+  function changeRow(change, dayCount) {
+    const fromEnd = Math.min(change.from[1], dayCount);
+    const before = fromEnd - change.from[0] + 1;
+    const after = change.to[1] - change.to[0] + 1;
+    const delta = after - before;
+    return el("span", { class: "seg-choice-change" }, [
+      toneDot(change.color),
+      el("span", { class: "seg-choice-name", text: change.name }),
+      el("span", {
+        class: "trek-muted",
+        text: `${dayRangeLabel(change.from[0], fromEnd)} \u2192 ${dayRangeLabel(change.to[0], change.to[1])}`
+      }),
+      delta !== 0 && el("span", {
+        class: "trek-faint",
+        text: `(${plural(Math.abs(delta), "day", "days")} ${delta < 0 ? "shorter" : "longer"})`
+      })
+    ]);
+  }
+  function choiceHeading(c) {
+    const days = dayRangeLabel(c.span[0], c.span[1]);
+    if (c.kind === "shrink") return `${days} ${c.days === 1 ? "is" : "are"} no longer in this leg.`;
+    const verb = c.days === 1 ? "belongs" : "belong";
+    const [lo, hi] = c.neighbour.range;
+    if (c.span[0] >= lo && c.span[1] <= hi) return `${days} already ${verb} to ${c.neighbour.name}.`;
+    const beyond = c.side === "end" ? "the legs after it" : "the legs before it";
+    return `${days} already ${verb} to ${c.neighbour.name} and ${beyond}.`;
+  }
+  function optionTitle(c, o) {
+    const later = c.side === "end";
+    switch (o.resolution) {
+      case "push":
+        return later ? "Push the later legs back" : "Move the earlier legs earlier";
+      case "pull":
+        return later ? "Pull the later legs forward" : "Move the earlier legs later";
+      case "take":
+        return `Take the days from ${c.neighbour.name}`;
+      case "give":
+        return `Give the days to ${c.neighbour.name}`;
+      case "gap":
+        return "Leave a gap";
+    }
+  }
+  function optionSummary(c, o) {
+    if (o.blockedBy) return `${o.blockedBy.name} would have no days left.`;
+    const shift = plural(c.shift, "day", "days");
+    const legs = c.side === "end" ? "Every later leg" : "Every earlier leg";
+    switch (o.resolution) {
+      case "push":
+        return `${legs} moves ${shift} ${c.side === "end" ? "later" : "earlier"}.`;
+      case "pull":
+        return `${legs} moves ${shift} ${c.side === "end" ? "earlier" : "later"}.`;
+      case "take":
+        return `Only ${c.neighbour.name} gets shorter.`;
+      case "give":
+        return `Only ${c.neighbour.name} gets longer.`;
+      case "gap":
+        return `No other leg changes; ${dayRangeLabel(c.span[0], c.span[1])} will not be in any leg.`;
+    }
+  }
   function dayLabel(day) {
     const parts = [`Day ${day.pos}`];
     const date = shortDate(day.date);
@@ -610,9 +826,9 @@
   function daySelect(days, selected) {
     const select = el("select", { class: "trek-select" });
     for (const day of days) {
-      const option = el("option", { text: dayLabel(day), attrs: { value: String(day.pos) } });
-      if (day.pos === selected) option.selected = true;
-      select.append(option);
+      const option2 = el("option", { text: dayLabel(day), attrs: { value: String(day.pos) } });
+      if (day.pos === selected) option2.selected = true;
+      select.append(option2);
     }
     return select;
   }
@@ -678,8 +894,101 @@
     const issuesNode = el("p", { class: "seg-issues" });
     const saveButton = button(isCreate ? "Add leg" : "Save", {
       variant: "primary",
-      onClick: () => actions2.onSave(read(), editingId)
+      onClick: () => {
+        if (plan.choices.length === 0) {
+          actions2.onSave(read(), editingId);
+          return;
+        }
+        const sent = {};
+        for (const c of plan.choices) {
+          const picked = pickedOption(c, picks[c.side]);
+          if (picked) sent[c.side] = picked.resolution;
+        }
+        actions2.onSave(read(), editingId, { picks: sent, expected: others });
+      }
     });
+    const knockNode = el("div", { class: "trek-stack seg-knock" });
+    let plan = { choices: [] };
+    let planKey = "";
+    const picks = {};
+    let others = [];
+    const optionButtons = /* @__PURE__ */ new Map();
+    function showPicks() {
+      for (const c of plan.choices) {
+        const current = pickedOption(c, picks[c.side])?.resolution;
+        for (const { option: option2, node: node2 } of optionButtons.get(c.side) ?? []) {
+          const on = option2.resolution === current;
+          node2.classList.toggle("seg-choice--on", on);
+          node2.setAttribute("aria-checked", String(on));
+          node2.tabIndex = on ? 0 : -1;
+        }
+      }
+    }
+    function pick(side, option2, focus = false) {
+      picks[side] = option2.resolution;
+      showPicks();
+      if (focus) optionButtons.get(side)?.find((b) => b.option === option2)?.node.focus();
+      revalidate();
+    }
+    function renderChoice(c) {
+      const headingId = `seg-knock-${c.side}`;
+      const visible = c.options.filter((o) => o.sameAs === null);
+      const buttons = visible.map((option2) => {
+        const node2 = el(
+          "button",
+          {
+            class: "seg-choice",
+            attrs: { type: "button", role: "radio", "aria-checked": "false" },
+            on: { click: () => pick(c.side, option2) }
+          },
+          [
+            el("span", { class: "seg-choice-title", text: optionTitle(c, option2) }),
+            el("span", { class: "seg-choice-sub trek-muted", text: optionSummary(c, option2) }),
+            !option2.blockedBy && option2.changes.length > 0 && el(
+              "span",
+              { class: "seg-choice-changes" },
+              option2.changes.map((change) => changeRow(change, data.dayCount))
+            )
+          ]
+        );
+        node2.disabled = Boolean(option2.blockedBy);
+        return { option: option2, node: node2 };
+      });
+      optionButtons.set(c.side, buttons);
+      const group = el(
+        "div",
+        { class: "seg-choices", attrs: { role: "radiogroup", "aria-labelledby": headingId } },
+        buttons.map((b) => b.node)
+      );
+      group.addEventListener("keydown", (ev) => {
+        const step = ARROW_STEP[ev.key];
+        if (step === void 0) return;
+        const usable = buttons.filter((b) => !b.option.blockedBy);
+        const at = usable.findIndex((b) => b.node === document.activeElement);
+        const next = usable[(at + step + usable.length) % usable.length];
+        if (!next) return;
+        ev.preventDefault();
+        pick(c.side, next.option, true);
+      });
+      return el("div", { class: "seg-knock-group" }, [
+        el("div", { class: "trek-label", text: choiceHeading(c), attrs: { id: headingId } }),
+        group
+      ]);
+    }
+    function renderPlan(next) {
+      plan = next;
+      const key2 = JSON.stringify(next.choices);
+      if (key2 === planKey) return;
+      planKey = key2;
+      for (const side of ["start", "end"]) {
+        const c = next.choices.find((candidate) => candidate.side === side);
+        const kept = c?.options.find((o) => o.resolution === picks[side] && !o.blockedBy && o.sameAs === null);
+        if (!kept) delete picks[side];
+      }
+      optionButtons.clear();
+      knockNode.replaceChildren(...next.choices.map(renderChoice));
+      showPicks();
+    }
     function read() {
       return {
         name: nameInput.value,
@@ -694,14 +1003,24 @@
         endSelect.value = String(input.start_day);
         input.end_day = input.start_day;
       }
+      const inTrip = Number.isInteger(input.start_day) && input.start_day >= 1 && input.end_day <= data.dayCount;
+      renderPlan(
+        editingId !== void 0 && inTrip ? planKnockOn({ id: editingId, start_day: input.start_day, end_day: input.end_day }, data.segments, data.dayCount) : { choices: [] }
+      );
+      const planned = plannedChanges(plan, picks, "lenient");
+      others = planned.ok ? toRangeUpdates(planned.changes) : [];
       const issues = validateSegmentInput(input, {
         dayCount: data.dayCount,
         existing: data.segments,
-        ...editingId !== void 0 ? { editingId } : {}
+        ...editingId !== void 0 ? { editingId } : {},
+        ...others.length > 0 ? { others } : {}
       });
       issuesNode.textContent = issues.map((code) => ISSUE_TEXT[code]).join(" ");
       issuesNode.classList.toggle("seg-issues--on", issues.length > 0);
       saveButton.disabled = issues.length > 0;
+      if (!isCreate) {
+        saveButton.textContent = others.length > 0 ? `Save and change ${plural(others.length, "other leg", "other legs")}` : "Save";
+      }
     }
     nameInput.addEventListener("input", revalidate);
     startSelect.addEventListener("change", revalidate);
@@ -722,6 +1041,7 @@
           el("div", { class: "seg-range-field" }, [el("label", { class: "trek-label", text: "First day" }), startSelect]),
           el("div", { class: "seg-range-field" }, [el("label", { class: "trek-label", text: "Last day" }), endSelect])
         ]),
+        knockNode,
         issuesNode,
         el("div", { class: "trek-cluster" }, [
           saveButton,
@@ -733,7 +1053,7 @@
     nameInput.focus();
     nameInput.select();
   }
-  var ISSUE_TEXT, KEY_ATTR;
+  var ISSUE_TEXT, ARROW_STEP, KEY_ATTR;
   var init_editor = __esm({
     "client-src/views/editor.ts"() {
       "use strict";
@@ -741,6 +1061,7 @@
       init_palette();
       init_limits();
       init_format();
+      init_knock_on();
       init_validate();
       ISSUE_TEXT = {
         name_required: "Give this leg a name.",
@@ -751,6 +1072,7 @@
         overlap: "Those days already belong to another leg.",
         limit_reached: `A trip can have at most ${MAX_SEGMENTS_PER_TRIP} legs.`
       };
+      ARROW_STEP = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 };
       KEY_ATTR = "editorKey";
     }
   });
@@ -1287,6 +1609,14 @@
       function draftFrom(view) {
         return { name: view.name, color: view.color, start_day: view.start_day, end_day: view.end_day };
       }
+      function knockOnBody(knockOn) {
+        if (!knockOn) return {};
+        return {
+          ...knockOn.picks.start ? { resolve_start: knockOn.picks.start } : {},
+          ...knockOn.picks.end ? { resolve_end: knockOn.picks.end } : {},
+          expect_moved: knockOn.expected
+        };
+      }
       var actions2 = {
         onCreate() {
           const data = getState().overview;
@@ -1330,7 +1660,7 @@
           void rememberForTrip(LAST_SEGMENT_KEY, 0);
           collapseDetail();
         },
-        async onSave(input, id) {
+        async onSave(input, id, knockOn) {
           const tripId = getState().tripId;
           if (tripId === null) return;
           const editing = id !== void 0;
@@ -1341,6 +1671,10 @@
               if (editing) {
                 const target = rows.find((r) => r.id === id);
                 if (target) Object.assign(target, input);
+                for (const moved of knockOn?.expected ?? []) {
+                  const row = rows.find((r) => r.id === moved.id);
+                  if (row) Object.assign(row, { start_day: moved.start_day, end_day: moved.end_day });
+                }
               } else {
                 rows.push({
                   ...input,
@@ -1353,8 +1687,8 @@
               }
               return { overview: withRows(current.overview, rows), editor: null };
             },
-            call: () => editing ? api("/segments", { method: "PUT", body: { tripId, id, ...input } }) : api("/segments", { method: "POST", body: { tripId, ...input } }),
-            successMessage: editing ? "Leg updated." : "Leg added."
+            call: () => editing ? api("/segments", { method: "PUT", body: { tripId, id, ...input, ...knockOnBody(knockOn) } }) : api("/segments", { method: "POST", body: { tripId, ...input } }),
+            successMessage: editing ? knockOn?.expected.length ? "Legs updated." : "Leg updated." : "Leg added."
           });
           if (!ok) setState({ editor: { mode: editing ? "edit" : "create", ...id !== void 0 ? { id } : {}, draft: input, issues: [] } });
         },

@@ -295,9 +295,11 @@ describe('MCP tools', () => {
   it('does not let an MCP caller manage a trip they cannot access', async () => {
     const host = hostFor([2]);
 
-    const result = await tool('list_trip_segments').handler({ tripId: 1 }, host.ctx as never);
-
-    expect(result).toMatchObject({ ok: false, status: 404, error: 'not_found' });
+    // Refused, as a throw: only a throw becomes a tool error the client sees.
+    await expect(tool('list_trip_segments').handler({ tripId: 1 }, host.ctx as never)).rejects.toThrow(/\[404\]/);
+    await expect(
+      plugin.hooks?.mcpToolProvider?.callTool({ name: 'list_trip_segments', args: { tripId: 1 } }, host.ctx as never),
+    ).rejects.toThrow('GET /overview found no such trip or segment visible to this user [404]');
   });
 });
 
