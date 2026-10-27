@@ -354,7 +354,7 @@ describe('making room when an edit runs into another leg', () => {
     expect(onSave).toHaveBeenCalledWith(
       { name: 'Tokyo', color: '#4F46E5', start_day: 1, end_day: 6 },
       1,
-      [{ id: 2, start_day: 7, end_day: 8 }],
+      { picks: { end: 'take' }, expected: [{ id: 2, start_day: 7, end_day: 8 }] },
     );
   });
 
@@ -399,7 +399,11 @@ describe('making room when an edit runs into another leg', () => {
     radio('Leave a gap').click();
     expect(save().textContent).toBe('Save');
     save().click();
-    expect(onSave).toHaveBeenCalledWith({ name: 'Tokyo', color: '#4F46E5', start_day: 1, end_day: 2 }, 1);
+    // The pick still goes along, so the server can tell if it no longer means "nothing moves".
+    expect(onSave).toHaveBeenCalledWith({ name: 'Tokyo', color: '#4F46E5', start_day: 1, end_day: 2 }, 1, {
+      picks: { end: 'gap' },
+      expected: [],
+    });
   });
 
   it('asks about the first day too, defaulting to taking from the previous leg', () => {

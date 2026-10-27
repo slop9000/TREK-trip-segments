@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  changesFor,
-  explicitChanges,
   planKnockOn,
+  plannedChanges,
   toRangeUpdates,
 } from '../src/shared/knock-on';
 import { validateSegmentInput } from '../src/shared/validate';
@@ -112,7 +111,7 @@ describe('growing the last day into the next leg', () => {
     expect(blocked(c, 'take')).toBe('Kyoto');
     expect(blocked(c, 'push')).toBe('Nara');
     expect(c.recommended).toBeNull();
-    expect(changesFor(plan2, {})).toBeNull();
+    expect(plannedChanges(plan2, {}, 'lenient')).toEqual({ ok: false, side: 'end', resolution: null });
   });
 
   it('marks push as the same as take when the only later leg ends the trip', () => {
@@ -207,15 +206,15 @@ describe('both ends at once', () => {
 
     expect(plan.choices.map((c) => `${c.side}:${c.kind}`)).toEqual(['start:shrink', 'end:grow']);
 
-    const defaults = changesFor(plan, {});
-    expect(Object.fromEntries((defaults ?? []).map((c) => [c.id, c.to]))).toEqual({
+    const defaults = plannedChanges(plan, {}, 'lenient');
+    expect(Object.fromEntries((defaults.ok ? defaults.changes : []).map((c) => [c.id, c.to]))).toEqual({
       1: [1, 7],
       3: [13, 17],
       4: [18, 20],
     });
 
-    const picked = changesFor(plan, { start: 'gap', end: 'take' });
-    expect(Object.fromEntries((picked ?? []).map((c) => [c.id, c.to]))).toEqual({ 3: [13, 15] });
+    const picked = plannedChanges(plan, { start: 'gap', end: 'take' });
+    expect(Object.fromEntries((picked.ok ? picked.changes : []).map((c) => [c.id, c.to]))).toEqual({ 3: [13, 15] });
   });
 });
 
@@ -254,6 +253,8 @@ describe('robustness', () => {
       { rows: [leg(1, 2, 3), leg(2, 5, 5), leg(3, 6, 9), leg(4, 12, 12)], dayCount: 12 },
       { rows: [leg(7, 4, 6), leg(3, 1, 3), leg(5, 7, 8)], dayCount: 8 },
       { rows: [leg(1, 1, 2), leg(2, 3, 9), leg(3, 30, 31)], dayCount: 9 },
+      { rows: [leg(1, 1, 5), leg(2, 6, 12)], dayCount: 10 },
+      { rows: [leg(1, 1, 3), leg(2, 8, 10), leg(3, 11, 12), leg(4, 14, 15)], dayCount: 16 },
     ];
 
     let checked = 0;
@@ -271,13 +272,18 @@ describe('robustness', () => {
             if (plan.choices.length === 0) continue;
 
             for (const picks of combos) {
-              const result = explicitChanges(plan, picks);
+              const result = plannedChanges(plan, picks);
               if (!result.ok || plan.choices.some((c) => picks[c.side] === undefined)) continue;
               const issues = validateSegmentInput(
                 { name: 'x', color: '#4F46E5', start_day: start, end_day: end },
                 { dayCount, existing: rows, editingId: edited.id, others: toRangeUpdates(result.changes) },
               );
-              expect(issues, `${edited.id} -> ${start}-${end} ${JSON.stringify(picks)}`).toEqual([]);
+              const label = `${edited.id} -> ${start}-${end} ${JSON.stringify(picks)}`;
+              expect(issues, label).toEqual([]);
+              // Moved legs are written as planned, so they must fit the trip.
+              for (const change of result.changes) {
+                expect(change.to[0] >= 1 && change.to[0] <= change.to[1] && change.to[1] <= dayCount, label).toBe(true);
+              }
               checked++;
             }
           }
@@ -292,25 +298,25 @@ describe('explicit picks, as the API takes them', () => {
   const plan = planKnockOn({ id: 1, start_day: 1, end_day: 7 }, TILED, 20);
 
   it('applies a named resolution', () => {
-    const result = explicitChanges(plan, { end: 'take' });
+    const result = plannedChanges(plan, { end: 'take' });
     expect(result).toMatchObject({ ok: true, changes: [{ id: 2, to: [8, 10] }] });
   });
 
   it('changes nothing for a side the caller left out', () => {
-    expect(explicitChanges(plan, {})).toEqual({ ok: true, changes: [] });
+    expect(plannedChanges(plan, {})).toEqual({ ok: true, changes: [] });
   });
 
   it('ignores a pick for a side the edit does not touch', () => {
-    expect(explicitChanges(plan, { start: 'push', end: 'push' })).toMatchObject({ ok: true });
+    expect(plannedChanges(plan, { start: 'push', end: 'push' })).toMatchObject({ ok: true });
   });
 
   it('refuses a resolution that does not fit the edit', () => {
-    expect(explicitChanges(plan, { end: 'gap' })).toEqual({ ok: false, side: 'end', resolution: 'gap' });
+    expect(plannedChanges(plan, { end: 'gap' })).toEqual({ ok: false, side: 'end', resolution: 'gap' });
   });
 
   it('refuses a blocked resolution instead of substituting another', () => {
     const tight = planKnockOn({ id: 1, start_day: 1, end_day: 10 }, TILED, 20);
-    expect(explicitChanges(tight, { end: 'take' })).toEqual({ ok: false, side: 'end', resolution: 'take' });
+    expect(plannedChanges(tight, { end: 'take' })).toEqual({ ok: false, side: 'end', resolution: 'take' });
   });
 });
 
@@ -329,40 +335,68 @@ describe('validating the final layout', () => {
     ).toEqual([]);
   });
 
-  it('rejects other legs that would collide with each other', () => {
+  it('rejects moved legs that would collide with a leg left in place', () => {
     const others = [{ id: 2, start_day: 8, end_day: 12 }];
-    expect(validateSegmentInput(input, { dayCount: 20, existing: TILED, editingId: 1, others })).toEqual([
-      'others_invalid',
-    ]);
+    expect(validateSegmentInput(input, { dayCount: 20, existing: TILED, editingId: 1, others })).toEqual(['overlap']);
+  });
+});
+
+describe('legs that already run past the end of the trip', () => {
+  // A trip that lost days: the neighbour is stored as 6-12 on a 10-day trip.
+  const rows = [leg(1, 1, 5, 'Tokyo'), leg(2, 6, 12, 'Kyoto')];
+
+  it('cuts a neighbour that moves at the last day, so the save can succeed', () => {
+    const shrink = only(planKnockOn({ id: 1, start_day: 1, end_day: 4 }, rows, 10), 'end');
+    expect(ranges(shrink, 'give')).toEqual({ 2: [5, 10] });
+    expect(ranges(shrink, 'pull')).toEqual({ 2: [5, 10] });
+
+    const grow = only(planKnockOn({ id: 1, start_day: 1, end_day: 7 }, rows, 10), 'end');
+    expect(ranges(grow, 'take')).toEqual({ 2: [8, 10] });
   });
 
-  it('rejects another leg moved past the end of the trip', () => {
-    const others = [
-      { id: 2, start_day: 8, end_day: 12 },
-      { id: 3, start_day: 13, end_day: 17 },
-      { id: 4, start_day: 18, end_day: 22 },
-    ];
-    expect(validateSegmentInput(input, { dayCount: 20, existing: TILED, editingId: 1, others })).toEqual([
-      'others_invalid',
-    ]);
-  });
+  it('produces a layout the validator accepts', () => {
+    const plan = planKnockOn({ id: 1, start_day: 1, end_day: 4 }, rows, 10);
+    const planned = plannedChanges(plan, { end: 'give' });
+    const others = planned.ok ? toRangeUpdates(planned.changes) : [];
 
-  it('rejects unknown, repeated or self-referencing legs', () => {
-    const base = { dayCount: 20, existing: TILED, editingId: 1 };
-    expect(validateSegmentInput(input, { ...base, others: [{ id: 9, start_day: 8, end_day: 10 }] })).toContain(
-      'others_invalid',
-    );
     expect(
-      validateSegmentInput(input, {
-        ...base,
-        others: [
-          { id: 2, start_day: 8, end_day: 10 },
-          { id: 2, start_day: 8, end_day: 10 },
-        ],
-      }),
-    ).toContain('others_invalid');
-    expect(validateSegmentInput(input, { ...base, others: [{ id: 1, start_day: 8, end_day: 10 }] })).toContain(
-      'others_invalid',
-    );
+      validateSegmentInput(
+        { name: 'Tokyo', color: '#4F46E5', start_day: 1, end_day: 4 },
+        { dayCount: 10, existing: rows, editingId: 1, others },
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe('moving a whole leg across a gap', () => {
+  it('frees only the days that were in the leg when it moves earlier', () => {
+    const rows = [leg(1, 1, 3, 'Tokyo'), leg(2, 8, 10, 'Kyoto'), leg(3, 11, 12, 'Osaka')];
+    const plan = planKnockOn({ id: 2, start_day: 4, end_day: 5 }, rows, 12);
+    const end = only(plan, 'end');
+
+    expect(plan.choices).toHaveLength(1);
+    expect(end).toMatchObject({ kind: 'shrink', span: [8, 10], days: 3 });
+    // Osaka takes Kyoto's old days, not the gap that was never Kyoto's.
+    expect(ranges(end, 'give')).toEqual({ 3: [8, 12] });
+  });
+
+  it('frees only the days that were in the leg when it moves later', () => {
+    const rows = [leg(1, 1, 3, 'Tokyo'), leg(2, 4, 6, 'Kyoto'), leg(3, 10, 12, 'Osaka')];
+    const plan = planKnockOn({ id: 2, start_day: 8, end_day: 9 }, rows, 15);
+    const start = only(plan, 'start');
+
+    expect(plan.choices).toHaveLength(1);
+    expect(start).toMatchObject({ kind: 'shrink', span: [4, 6], days: 3 });
+    expect(ranges(start, 'give')).toEqual({ 1: [1, 6] });
+  });
+
+  it('leaves a leg it jumped clean over where it is', () => {
+    const rows = [leg(1, 1, 3, 'Tokyo'), leg(2, 4, 5, 'Kyoto'), leg(3, 8, 10, 'Osaka')];
+    const plan = planKnockOn({ id: 1, start_day: 6, end_day: 9 }, rows, 12);
+    const end = only(plan, 'end');
+
+    expect(end).toMatchObject({ kind: 'grow', span: [8, 9], shift: 2, neighbour: { name: 'Osaka' } });
+    expect(ranges(end, 'push')).toEqual({ 3: [10, 12] });
+    expect(ranges(end, 'take')).toEqual({ 3: [10, 10] });
   });
 });

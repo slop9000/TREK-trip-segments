@@ -7,7 +7,8 @@ import { renderStrip } from './strip';
 import { MAX_SEGMENTS_PER_TRIP } from '../../src/shared/limits';
 import { plural } from '../../src/shared/format';
 import type { AppState, ViewMode } from '../store';
-import type { OverviewPayload, RangeUpdate, SegmentInput, SegmentView } from '../../src/shared/types';
+import type { KnockOnSave } from '../../src/shared/knock-on';
+import type { OverviewPayload, SegmentInput, SegmentView } from '../../src/shared/types';
 
 export interface ShellActions {
   onCreate: () => void;
@@ -16,7 +17,7 @@ export interface ShellActions {
   onToggle: (view: SegmentView) => void;
   onOpenById: (id: number) => void;
   onClose: () => void;
-  onSave: (input: SegmentInput, id?: number, others?: RangeUpdate[]) => void;
+  onSave: (input: SegmentInput, id?: number, knockOn?: KnockOnSave) => void;
   onCancelEdit: () => void;
   onSetView: (view: ViewMode) => void;
 }

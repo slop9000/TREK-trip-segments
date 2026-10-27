@@ -128,7 +128,7 @@
       },
       {
         "name": "update_trip_segment",
-        "description": "Replace the name, colour and inclusive day range of an existing trip segment. All editable fields are required. Pass resolve_end or resolve_start to move neighbouring segments in the same atomic save.",
+        "description": "Replace the name, colour and inclusive day range of an existing trip segment. All editable fields are required. Pass resolve_end or resolve_start to move neighbouring segments in the same atomic save; without them an overlap is refused as before.",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -174,7 +174,7 @@
                 "pull",
                 "gap"
               ],
-              "description": "When end_day moves. Into the next segment: push moves every later segment later by the overlap (the last one is cut at the final trip day), take shortens only the next segment. Away from a directly following segment: give extends the next segment back, pull moves every later segment earlier (the last keeps its end), gap leaves the days uncovered. Without it, an overlap is refused."
+              "description": "When end_day moves. Into the next segment: push moves every later segment later by the overlap (the last one is cut at the final trip day), take shortens only the next segment. Away from a directly following segment: give extends the next segment back, pull moves every later segment earlier (the last keeps its end), gap leaves the days uncovered. Without it the behaviour is unchanged: an overlap is refused and freed days are left uncovered."
             },
             "resolve_start": {
               "type": "string",

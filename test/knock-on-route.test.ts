@@ -78,16 +78,15 @@ const tokyo = (start: number, end: number) => ({
   end_day: end,
 });
 
-describe('PUT /segments with other legs', () => {
+const PUSHED = () => [
+  { id: ids.kyoto, start_day: 8, end_day: 12 },
+  { id: ids.osaka, start_day: 13, end_day: 17 },
+  { id: ids.nara, start_day: 18, end_day: 20 },
+];
+
+describe('PUT /segments as the Segments tab sends it', () => {
   it('saves the edited leg and every moved leg together, and broadcasts once', async () => {
-    const res = await send(ctx, {
-      ...tokyo(1, 7),
-      others: [
-        { id: ids.kyoto, start_day: 8, end_day: 12 },
-        { id: ids.osaka, start_day: 13, end_day: 17 },
-        { id: ids.nara, start_day: 18, end_day: 20 },
-      ],
-    });
+    const res = await send(ctx, { ...tokyo(1, 7), resolve_end: 'push', expect_moved: PUSHED() });
 
     expect(res.status).toBe(200);
     expect(res.body['segment']).toMatchObject({ id: ids.tokyo, start_day: 1, end_day: 7 });
@@ -96,89 +95,85 @@ describe('PUT /segments with other legs', () => {
     expect(ctx.broadcasts).toEqual(['changed']);
   });
 
-  it('rejects a final layout that still overlaps, and writes nothing', async () => {
-    const res = await send(ctx, {
-      ...tokyo(1, 7),
-      // Kyoto makes room for Tokyo but runs into Osaka, which was left out.
-      others: [{ id: ids.kyoto, start_day: 8, end_day: 12 }],
-    });
+  it('answers 409 when the plan is no longer what the user saw, and writes nothing', async () => {
+    // Another tab shortened Osaka after this one planned the push.
+    await ctx.db.exec('UPDATE segments SET end_day = 14 WHERE id = ?', ids.osaka);
 
-    expect(res.status).toBe(422);
-    expect(res.body['issues']).toEqual(['others_invalid']);
-    expect(await layout()).toEqual(['Tokyo 1-5', 'Kyoto 6-10', 'Osaka 11-15', 'Nara 16-20']);
+    const res = await send(ctx, { ...tokyo(1, 7), resolve_end: 'push', expect_moved: PUSHED() });
+
+    expect(res.status).toBe(409);
+    expect(await layout()).toEqual(['Tokyo 1-5', 'Kyoto 6-10', 'Osaka 11-14', 'Nara 16-20']);
     expect(ctx.broadcasts).toEqual([]);
   });
 
-  it('rejects another leg moved past the end of the trip', async () => {
-    const res = await send(ctx, {
-      ...tokyo(1, 7),
-      others: [
-        { id: ids.kyoto, start_day: 8, end_day: 12 },
-        { id: ids.osaka, start_day: 13, end_day: 17 },
-        { id: ids.nara, start_day: 18, end_day: 22 },
-      ],
-    });
+  it('answers 409 when a leg in the plan was deleted', async () => {
+    await ctx.db.exec('DELETE FROM segments WHERE id = ?', ids.kyoto);
 
-    expect(res.status).toBe(422);
-    expect(await layout()).toEqual(['Tokyo 1-5', 'Kyoto 6-10', 'Osaka 11-15', 'Nara 16-20']);
-  });
-
-  it('rejects an edited leg that still overlaps what was left in place', async () => {
-    const res = await send(ctx, { ...tokyo(1, 7), others: [{ id: ids.osaka, start_day: 11, end_day: 14 }] });
-
-    expect(res.status).toBe(422);
-    expect(res.body['issues']).toEqual(['overlap']);
-  });
-
-  it('answers 409 when a leg in the plan no longer exists', async () => {
-    const res = await send(ctx, { ...tokyo(1, 7), others: [{ id: 999, start_day: 8, end_day: 10 }] });
+    const res = await send(ctx, { ...tokyo(1, 7), resolve_end: 'take', expect_moved: [{ id: ids.kyoto, start_day: 8, end_day: 10 }] });
 
     expect(res.status).toBe(409);
-    expect(await layout()).toEqual(['Tokyo 1-5', 'Kyoto 6-10', 'Osaka 11-15', 'Nara 16-20']);
+    expect(await layout()).toEqual(['Tokyo 1-5', 'Osaka 11-15', 'Nara 16-20']);
+  });
+
+  it('answers 409 when the picks no longer give what the user saw', async () => {
+    // The tab showed no moves for these picks; the server's plan moves Kyoto.
+    const res = await send(ctx, { ...tokyo(1, 3), resolve_end: 'give', expect_moved: [] });
+
+    expect(res.status).toBe(409);
   });
 
   /**
-   * The race the route's own validation cannot see: it read the rows, then
-   * another tab wrote before the batch ran. Only the in-transaction guard can
-   * refuse this, and it must leave every row as the other tab left it.
+   * The race neither the plan comparison nor the route's validation can see:
+   * another tab writes after the route read the legs and before the batch
+   * runs. The batch only moves a leg that is still where the plan found it, and
+   * its final check refuses, leaving every row as the other tab left it.
    */
-  it('rolls back when the layout changed between the read and the write', async () => {
+  it('rolls back when a leg moved between the read and the write', async () => {
     const realQuery = ctx.db.query.bind(ctx.db);
     let raced = false;
     ctx.db.query = (async (sql: string, ...args: unknown[]) => {
       const out = await realQuery(sql, ...args);
       if (!raced && sql.startsWith('SELECT') && sql.includes('ORDER BY start_day')) {
         raced = true;
-        // Osaka grows backwards over day 10 right after the route listed the legs.
-        await ctx.db.exec('UPDATE segments SET start_day = 9 WHERE id = ?', ids.osaka);
-        await ctx.db.exec('UPDATE segments SET end_day = 8 WHERE id = ?', ids.kyoto);
+        await ctx.db.exec('UPDATE segments SET end_day = 9 WHERE id = ?', ids.kyoto);
       }
       return out;
     }) as typeof ctx.db.query;
 
     const res = await send(ctx, {
       ...tokyo(1, 7),
-      others: [{ id: ids.kyoto, start_day: 8, end_day: 10 }],
+      resolve_end: 'take',
+      expect_moved: [{ id: ids.kyoto, start_day: 8, end_day: 10 }],
     });
 
     expect(res.status).toBe(409);
-    expect(await layout()).toEqual(['Tokyo 1-5', 'Kyoto 6-8', 'Osaka 9-15', 'Nara 16-20']);
+    expect(await layout()).toEqual(['Tokyo 1-5', 'Kyoto 6-9', 'Osaka 11-15', 'Nara 16-20']);
     expect(ctx.broadcasts).toEqual([]);
   });
 
-  it('answers 400 for a malformed list of other legs', async () => {
-    expect((await send(ctx, { ...tokyo(1, 7), others: 'everything' })).status).toBe(400);
-    expect((await send(ctx, { ...tokyo(1, 7), others: [{ id: ids.kyoto }] })).status).toBe(400);
-    expect(
-      (await send(ctx, { ...tokyo(1, 7), others: [], resolve_end: 'push' })).status,
-    ).toBe(400);
+  it('answers 500, not 409, when the transaction fails for any other reason', async () => {
+    ctx.db.tx = async () => {
+      throw new Error('disk I/O error');
+    };
+
+    const res = await put.handler(request({ ...tokyo(1, 7), resolve_end: 'push', expect_moved: PUSHED() }), ctx);
+
+    expect(res.status).toBe(500);
+    expect(await layout()).toEqual(['Tokyo 1-5', 'Kyoto 6-10', 'Osaka 11-15', 'Nara 16-20']);
   });
 
-  it('treats an empty list as an ordinary update', async () => {
-    const res = await send(ctx, { ...tokyo(1, 4), others: [] });
+  it('answers 400 for a malformed expectation', async () => {
+    expect((await send(ctx, { ...tokyo(1, 7), resolve_end: 'push', expect_moved: 'everything' })).status).toBe(400);
+    expect((await send(ctx, { ...tokyo(1, 7), resolve_end: 'push', expect_moved: [{ id: ids.kyoto }] })).status).toBe(400);
+    expect((await send(ctx, { ...tokyo(1, 7), expect_moved: [] })).status).toBe(400);
+  });
 
-    expect(res.status).toBe(200);
-    expect(await layout()).toEqual(['Tokyo 1-4', 'Kyoto 6-10', 'Osaka 11-15', 'Nara 16-20']);
+  it('no longer accepts ranges for other legs from the caller', async () => {
+    const res = await send(ctx, { ...tokyo(1, 7), others: [{ id: ids.kyoto, start_day: 8, end_day: 10 }] });
+
+    // `others` is simply not a field any more, so this is a plain overlapping update.
+    expect(res.status).toBe(409);
+    expect(await layout()).toEqual(['Tokyo 1-5', 'Kyoto 6-10', 'Osaka 11-15', 'Nara 16-20']);
   });
 
   it('keeps refusing a plain overlapping update', async () => {
@@ -251,6 +246,15 @@ describe('PUT /segments with a named resolution', () => {
 
     expect(result).toMatchObject({ ok: true, segment: { start_day: 1, end_day: 7 } });
     expect(await layout()).toEqual(['Tokyo 1-7', 'Kyoto 8-12', 'Osaka 13-17', 'Nara 18-20']);
+  });
+
+  it('turns a refused MCP update into a tool error that says why', async () => {
+    const tool = mcpTools.find((t) => t.name === 'update_trip_segment')!;
+
+    await expect(tool.handler({ ...tokyo(1, 10), resolve_end: 'take' }, ctx)).rejects.toThrow(
+      /rejected invalid values \[422\] \(resolve_end_unavailable\)/,
+    );
+    await expect(tool.handler(tokyo(1, 7), ctx)).rejects.toThrow(/\[409\]: overlaps an existing segment/);
   });
 
   it('answers 404 for a trip the user cannot see', async () => {

@@ -553,21 +553,26 @@
   function byPosition(a, b) {
     return a.start_day - b.start_day || a.id - b.id;
   }
+  function byFrom(a, b) {
+    return a.from[0] - b.from[0] || a.id - b.id;
+  }
   function option(resolution, legs, dayCount, next) {
     const changes = [];
     let blockedBy = null;
     legs.forEach((leg, i) => {
-      const to = next(leg, i);
+      const raw = next(leg, i);
+      const moved = raw[0] !== leg.start_day || raw[1] !== leg.end_day;
+      const to = moved ? [raw[0], Math.min(raw[1], dayCount)] : raw;
       const gone = to[1] < to[0] || to[1] < 1 || to[0] > dayCount;
       if (gone && !blockedBy) blockedBy = { id: leg.id, name: leg.name };
-      if (to[0] !== leg.start_day || to[1] !== leg.end_day) {
+      if (moved) {
         changes.push({ id: leg.id, name: leg.name, color: leg.color, from: [leg.start_day, leg.end_day], to });
       }
     });
-    changes.sort((a, b) => a.from[0] - b.from[0] || a.id - b.id);
+    changes.sort(byFrom);
     return { resolution, changes, blockedBy, sameAs: null };
   }
-  function choice(side, kind, span, neighbour, options) {
+  function choice(side, kind, span, shift, neighbour, options) {
     for (const [i, o] of options.entries()) {
       const twin = options.slice(0, i).find((earlier) => sameChanges(earlier.changes, o.changes));
       o.sameAs = twin?.resolution ?? null;
@@ -577,6 +582,7 @@
       kind,
       days: span[1] - span[0] + 1,
       span,
+      shift,
       neighbour: {
         id: neighbour.id,
         name: neighbour.name,
@@ -590,42 +596,56 @@
   function sameChanges(a, b) {
     return a.length === b.length && a.every((c, i) => c.id === b[i]?.id && c.to[0] === b[i]?.to[0] && c.to[1] === b[i]?.to[1]);
   }
-  function planEnd(oldEnd, newEnd, later, dayCount) {
-    const next = later[0];
-    if (!next) return null;
-    if (newEnd > oldEnd && newEnd >= next.start_day) {
-      const d = newEnd - next.start_day + 1;
-      return choice("end", "grow", [next.start_day, newEnd], next, [
-        option("push", later, dayCount, (leg) => [leg.start_day + d, Math.min(leg.end_day + d, dayCount)]),
-        option("take", [next], dayCount, (leg) => [newEnd + 1, leg.end_day])
+  function planEnd(old, edited, later, dayCount) {
+    const [oldStart, oldEnd] = old;
+    const [newStart, newEnd] = edited;
+    if (later.length === 0) return null;
+    const inWay = later.filter((leg) => leg.end_day >= newStart);
+    const hit = inWay[0];
+    if (newEnd > oldEnd && hit && hit.start_day <= newEnd) {
+      const d = newEnd - hit.start_day + 1;
+      const lastHit = Math.max(...inWay.filter((leg) => leg.start_day <= newEnd).map((leg) => leg.end_day));
+      const span = [Math.max(newStart, hit.start_day), Math.min(newEnd, lastHit)];
+      return choice("end", "grow", span, d, hit, [
+        option("push", inWay, dayCount, (leg) => [leg.start_day + d, leg.end_day + d]),
+        option("take", [hit], dayCount, (leg) => [newEnd + 1, leg.end_day])
       ]);
     }
+    const next = later[0];
     if (newEnd < oldEnd && next.start_day === oldEnd + 1) {
-      const d = oldEnd - newEnd;
+      const freedFrom = Math.max(newEnd + 1, oldStart);
+      const d = oldEnd - freedFrom + 1;
       const last = later.length - 1;
-      return choice("end", "shrink", [newEnd + 1, oldEnd], next, [
-        option("give", [next], dayCount, (leg) => [newEnd + 1, leg.end_day]),
+      return choice("end", "shrink", [freedFrom, oldEnd], d, next, [
+        option("give", [next], dayCount, (leg) => [freedFrom, leg.end_day]),
         option("pull", later, dayCount, (leg, i) => [leg.start_day - d, i === last ? leg.end_day : leg.end_day - d]),
         option("gap", [], dayCount, (leg) => [leg.start_day, leg.end_day])
       ]);
     }
     return null;
   }
-  function planStart(oldStart, newStart, earlier, dayCount) {
-    const prev = earlier[0];
-    if (!prev) return null;
-    if (newStart < oldStart && newStart <= prev.end_day) {
-      const d = prev.end_day - newStart + 1;
-      return choice("start", "grow", [newStart, prev.end_day], prev, [
-        option("take", [prev], dayCount, (leg) => [leg.start_day, newStart - 1]),
-        option("push", earlier, dayCount, (leg) => [Math.max(leg.start_day - d, 1), leg.end_day - d])
+  function planStart(old, edited, earlier, dayCount) {
+    const [oldStart, oldEnd] = old;
+    const [newStart, newEnd] = edited;
+    if (earlier.length === 0) return null;
+    const inWay = earlier.filter((leg) => leg.start_day <= newEnd);
+    const hit = inWay[0];
+    if (newStart < oldStart && hit && hit.end_day >= newStart) {
+      const d = hit.end_day - newStart + 1;
+      const firstHit = Math.min(...inWay.filter((leg) => leg.end_day >= newStart).map((leg) => leg.start_day));
+      const span = [Math.max(newStart, firstHit), Math.min(newEnd, hit.end_day)];
+      return choice("start", "grow", span, d, hit, [
+        option("take", [hit], dayCount, (leg) => [leg.start_day, newStart - 1]),
+        option("push", inWay, dayCount, (leg) => [Math.max(leg.start_day - d, 1), leg.end_day - d])
       ]);
     }
+    const prev = earlier[0];
     if (newStart > oldStart && prev.end_day === oldStart - 1) {
-      const d = newStart - oldStart;
+      const freedTo = Math.min(newStart - 1, oldEnd);
+      const d = freedTo - oldStart + 1;
       const first = earlier.length - 1;
-      return choice("start", "shrink", [oldStart, newStart - 1], prev, [
-        option("give", [prev], dayCount, (leg) => [leg.start_day, newStart - 1]),
+      return choice("start", "shrink", [oldStart, freedTo], d, prev, [
+        option("give", [prev], dayCount, (leg) => [leg.start_day, freedTo]),
         option("pull", earlier, dayCount, (leg, i) => [i === first ? leg.start_day : leg.start_day + d, leg.end_day + d]),
         option("gap", [], dayCount, (leg) => [leg.start_day, leg.end_day])
       ]);
@@ -639,10 +659,12 @@
     const inTrip = others.filter((r) => r.start_day <= dayCount);
     const later = inTrip.filter((r) => r.start_day > original.end_day);
     const earlier = inTrip.filter((r) => r.end_day < original.start_day).reverse();
+    const old = [original.start_day, original.end_day];
+    const range = [edited.start_day, edited.end_day];
     const choices = [];
-    const start = planStart(original.start_day, edited.start_day, earlier, dayCount);
+    const start = planStart(old, range, earlier, dayCount);
     if (start) choices.push(start);
-    const end = planEnd(original.end_day, edited.end_day, later, dayCount);
+    const end = planEnd(old, range, later, dayCount);
     if (end) choices.push(end);
     return { choices };
   }
@@ -651,17 +673,19 @@
     if (wanted) return wanted;
     return c.options.find((o) => o.resolution === c.recommended) ?? null;
   }
-  function changesFor(plan, picks) {
-    const out = [];
-    for (const c of plan.choices) {
-      const picked = pickedOption(c, picks[c.side]);
-      if (!picked) return null;
-      out.push(...picked.changes);
-    }
-    return out.sort((a, b) => a.from[0] - b.from[0] || a.id - b.id);
-  }
   function toRangeUpdates(changes) {
     return changes.map((c) => ({ id: c.id, start_day: c.to[0], end_day: c.to[1] }));
+  }
+  function plannedChanges(plan, picks, mode = "strict") {
+    const out = [];
+    for (const c of plan.choices) {
+      const pick = picks[c.side];
+      if (pick === void 0 && mode === "strict") continue;
+      const picked = mode === "lenient" ? pickedOption(c, pick) : c.options.find((o) => o.resolution === pick && !o.blockedBy);
+      if (!picked) return { ok: false, side: c.side, resolution: pick ?? null };
+      out.push(...picked.changes);
+    }
+    return { ok: true, changes: out.sort(byFrom) };
   }
   var init_knock_on = __esm({
     "src/shared/knock-on.ts"() {
@@ -690,9 +714,6 @@
     }
     return null;
   }
-  function wellFormedRange(start, end) {
-    return Number.isInteger(start) && Number.isInteger(end) && start >= 1 && end >= start && end <= MAX_TRIP_DAYS;
-  }
   function applyRangeUpdates(existing, others) {
     const byId = new Map(others.map((u) => [u.id, u]));
     return existing.map((row) => {
@@ -700,19 +721,9 @@
       return update ? { ...row, start_day: update.start_day, end_day: update.end_day } : row;
     });
   }
-  function othersFit(others, existing, dayCount, editingId) {
-    const ids = /* @__PURE__ */ new Set();
-    for (const u of others) {
-      if (ids.has(u.id) || u.id === editingId || !existing.some((r) => r.id === u.id)) return false;
-      ids.add(u.id);
-      if (!wellFormedRange(u.start_day, u.end_day) || u.end_day > dayCount) return false;
-    }
-    const world = applyRangeUpdates(existing, others).filter((r) => r.id !== editingId);
-    for (const moved of world) {
-      if (!ids.has(moved.id)) continue;
-      if (findOverlap(moved, world, moved.id)) return false;
-    }
-    return true;
+  function movedOverlap(world, others, editingId) {
+    const legs = world.filter((r) => r.id !== editingId);
+    return others.some((u) => findOverlap(u, legs, u.id) !== null);
   }
   function validateSegmentInput(input, opts) {
     const issues = [];
@@ -724,15 +735,13 @@
     const end = input.end_day;
     const others = opts.others ?? [];
     const world = others.length > 0 ? applyRangeUpdates(opts.existing, others) : opts.existing;
-    if (!wellFormedRange(start, end)) {
+    const rangeWellFormed = Number.isInteger(start) && Number.isInteger(end) && start >= 1 && end >= start && end <= MAX_TRIP_DAYS;
+    if (!rangeWellFormed) {
       issues.push("range_invalid");
     } else if (end > opts.dayCount) {
       issues.push("range_out_of_bounds");
-    } else if (findOverlap({ start_day: start, end_day: end }, world, opts.editingId)) {
+    } else if (findOverlap({ start_day: start, end_day: end }, world, opts.editingId) || movedOverlap(world, others, opts.editingId)) {
       issues.push("overlap");
-    }
-    if (others.length > 0 && !othersFit(others, opts.existing, opts.dayCount, opts.editingId)) {
-      issues.push("others_invalid");
     }
     if (opts.editingId === void 0 && opts.existing.length >= MAX_SEGMENTS_PER_TRIP) {
       issues.push("limit_reached");
@@ -762,7 +771,7 @@
       }),
       delta !== 0 && el("span", {
         class: "trek-faint",
-        text: `(${plural2(Math.abs(delta), "day", "days")} ${delta < 0 ? "shorter" : "longer"})`
+        text: `(${plural(Math.abs(delta), "day", "days")} ${delta < 0 ? "shorter" : "longer"})`
       })
     ]);
   }
@@ -792,7 +801,7 @@
   }
   function optionSummary(c, o) {
     if (o.blockedBy) return `${o.blockedBy.name} would have no days left.`;
-    const shift = plural2(c.days, "day", "days");
+    const shift = plural(c.shift, "day", "days");
     const legs = c.side === "end" ? "Every later leg" : "Every earlier leg";
     switch (o.resolution) {
       case "push":
@@ -886,8 +895,16 @@
     const saveButton = button(isCreate ? "Add leg" : "Save", {
       variant: "primary",
       onClick: () => {
-        if (others.length > 0) actions2.onSave(read(), editingId, others);
-        else actions2.onSave(read(), editingId);
+        if (plan.choices.length === 0) {
+          actions2.onSave(read(), editingId);
+          return;
+        }
+        const sent = {};
+        for (const c of plan.choices) {
+          const picked = pickedOption(c, picks[c.side]);
+          if (picked) sent[c.side] = picked.resolution;
+        }
+        actions2.onSave(read(), editingId, { picks: sent, expected: others });
       }
     });
     const knockNode = el("div", { class: "trek-stack seg-knock" });
@@ -990,8 +1007,8 @@
       renderPlan(
         editingId !== void 0 && inTrip ? planKnockOn({ id: editingId, start_day: input.start_day, end_day: input.end_day }, data.segments, data.dayCount) : { choices: [] }
       );
-      const changes = changesFor(plan, picks) ?? [];
-      others = toRangeUpdates(changes);
+      const planned = plannedChanges(plan, picks, "lenient");
+      others = planned.ok ? toRangeUpdates(planned.changes) : [];
       const issues = validateSegmentInput(input, {
         dayCount: data.dayCount,
         existing: data.segments,
@@ -1002,7 +1019,7 @@
       issuesNode.classList.toggle("seg-issues--on", issues.length > 0);
       saveButton.disabled = issues.length > 0;
       if (!isCreate) {
-        saveButton.textContent = others.length > 0 ? `Save and change ${plural2(others.length, "other leg", "other legs")}` : "Save";
+        saveButton.textContent = others.length > 0 ? `Save and change ${plural(others.length, "other leg", "other legs")}` : "Save";
       }
     }
     nameInput.addEventListener("input", revalidate);
@@ -1036,7 +1053,7 @@
     nameInput.focus();
     nameInput.select();
   }
-  var ISSUE_TEXT, ARROW_STEP, plural2, KEY_ATTR;
+  var ISSUE_TEXT, ARROW_STEP, KEY_ATTR;
   var init_editor = __esm({
     "client-src/views/editor.ts"() {
       "use strict";
@@ -1053,11 +1070,9 @@
         range_invalid: "The last day has to be on or after the first day.",
         range_out_of_bounds: "That is past the last day of the trip.",
         overlap: "Those days already belong to another leg.",
-        limit_reached: `A trip can have at most ${MAX_SEGMENTS_PER_TRIP} legs.`,
-        others_invalid: "The other legs would no longer fit the trip."
+        limit_reached: `A trip can have at most ${MAX_SEGMENTS_PER_TRIP} legs.`
       };
       ARROW_STEP = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 };
-      plural2 = (n, one, many) => `${n} ${n === 1 ? one : many}`;
       KEY_ATTR = "editorKey";
     }
   });
@@ -1594,6 +1609,14 @@
       function draftFrom(view) {
         return { name: view.name, color: view.color, start_day: view.start_day, end_day: view.end_day };
       }
+      function knockOnBody(knockOn) {
+        if (!knockOn) return {};
+        return {
+          ...knockOn.picks.start ? { resolve_start: knockOn.picks.start } : {},
+          ...knockOn.picks.end ? { resolve_end: knockOn.picks.end } : {},
+          expect_moved: knockOn.expected
+        };
+      }
       var actions2 = {
         onCreate() {
           const data = getState().overview;
@@ -1637,7 +1660,7 @@
           void rememberForTrip(LAST_SEGMENT_KEY, 0);
           collapseDetail();
         },
-        async onSave(input, id, others) {
+        async onSave(input, id, knockOn) {
           const tripId = getState().tripId;
           if (tripId === null) return;
           const editing = id !== void 0;
@@ -1648,7 +1671,7 @@
               if (editing) {
                 const target = rows.find((r) => r.id === id);
                 if (target) Object.assign(target, input);
-                for (const moved of others ?? []) {
+                for (const moved of knockOn?.expected ?? []) {
                   const row = rows.find((r) => r.id === moved.id);
                   if (row) Object.assign(row, { start_day: moved.start_day, end_day: moved.end_day });
                 }
@@ -1664,8 +1687,8 @@
               }
               return { overview: withRows(current.overview, rows), editor: null };
             },
-            call: () => editing ? api("/segments", { method: "PUT", body: { tripId, id, ...input, ...others ? { others } : {} } }) : api("/segments", { method: "POST", body: { tripId, ...input } }),
-            successMessage: editing ? others ? "Legs updated." : "Leg updated." : "Leg added."
+            call: () => editing ? api("/segments", { method: "PUT", body: { tripId, id, ...input, ...knockOnBody(knockOn) } }) : api("/segments", { method: "POST", body: { tripId, ...input } }),
+            successMessage: editing ? knockOn?.expected.length ? "Legs updated." : "Leg updated." : "Leg added."
           });
           if (!ok) setState({ editor: { mode: editing ? "edit" : "create", ...id !== void 0 ? { id } : {}, draft: input, issues: [] } });
         },

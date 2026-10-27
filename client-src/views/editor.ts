@@ -1,8 +1,8 @@
 import { button, clear, el, toneDot } from '../dom';
 import { PALETTE, normalizeHexColor } from '../../src/shared/palette';
 import { MAX_SEGMENTS_PER_TRIP, NAME_MAX } from '../../src/shared/limits';
-import { dayRangeLabel, shortDate } from '../../src/shared/format';
-import { changesFor, pickedOption, planKnockOn, toRangeUpdates } from '../../src/shared/knock-on';
+import { dayRangeLabel, plural, shortDate } from '../../src/shared/format';
+import { pickedOption, planKnockOn, plannedChanges, toRangeUpdates } from '../../src/shared/knock-on';
 import { validateSegmentInput } from '../../src/shared/validate';
 import type { IssueCode } from '../../src/shared/validate';
 import type {
@@ -10,6 +10,7 @@ import type {
   KnockOnOption,
   KnockOnPicks,
   KnockOnPlan,
+  KnockOnSave,
   RangeChange,
 } from '../../src/shared/knock-on';
 import type { OverviewDay, OverviewPayload, RangeUpdate, SegmentInput } from '../../src/shared/types';
@@ -31,18 +32,15 @@ const ISSUE_TEXT: Record<IssueCode, string> = {
   range_out_of_bounds: 'That is past the last day of the trip.',
   overlap: 'Those days already belong to another leg.',
   limit_reached: `A trip can have at most ${MAX_SEGMENTS_PER_TRIP} legs.`,
-  others_invalid: 'The other legs would no longer fit the trip.',
 };
 
 export interface EditorActions {
-  /** `others` is present only when the save also moves other legs. */
-  onSave: (input: SegmentInput, id?: number, others?: RangeUpdate[]) => void;
+  /** `knockOn` is present only when the edit raised a choice about other legs. */
+  onSave: (input: SegmentInput, id?: number, knockOn?: KnockOnSave) => void;
   onCancel: () => void;
 }
 
 const ARROW_STEP: Record<string, number> = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 };
-
-const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
 /** "Kyoto  Day 9–12 → Day 11–14", with how the length changed when it did. */
 function changeRow(change: RangeChange, dayCount: number): HTMLElement {
@@ -100,7 +98,7 @@ function optionTitle(c: KnockOnChoice, o: KnockOnOption): string {
 function optionSummary(c: KnockOnChoice, o: KnockOnOption): string {
   if (o.blockedBy) return `${o.blockedBy.name} would have no days left.`;
 
-  const shift = plural(c.days, 'day', 'days');
+  const shift = plural(c.shift, 'day', 'days');
   const legs = c.side === 'end' ? 'Every later leg' : 'Every earlier leg';
   switch (o.resolution) {
     case 'push':
@@ -228,8 +226,16 @@ export function renderEditor(
   const saveButton = button(isCreate ? 'Add leg' : 'Save', {
     variant: 'primary',
     onClick: () => {
-      if (others.length > 0) actions.onSave(read(), editingId, others);
-      else actions.onSave(read(), editingId);
+      if (plan.choices.length === 0) {
+        actions.onSave(read(), editingId);
+        return;
+      }
+      const sent: KnockOnPicks = {};
+      for (const c of plan.choices) {
+        const picked = pickedOption(c, picks[c.side]);
+        if (picked) sent[c.side] = picked.resolution;
+      }
+      actions.onSave(read(), editingId, { picks: sent, expected: others });
     },
   });
 
@@ -369,8 +375,8 @@ export function renderEditor(
     );
     // Null when some question has no usable answer; the overlap message below
     // then says why Save is off, and the cards say what is in the way.
-    const changes = changesFor(plan, picks) ?? [];
-    others = toRangeUpdates(changes);
+    const planned = plannedChanges(plan, picks, 'lenient');
+    others = planned.ok ? toRangeUpdates(planned.changes) : [];
 
     const issues = validateSegmentInput(input, {
       dayCount: data.dayCount,

@@ -1,7 +1,7 @@
 import { buildDayIndex, resolveSegment } from '../shared/drift';
 import { MAX_SEGMENTS_PER_TRIP } from '../shared/limits';
 import { hexForTone, isTone, normalizeHexColor } from '../shared/palette';
-import { explicitChanges, isResolution, planKnockOn, toRangeUpdates } from '../shared/knock-on';
+import { isResolution, planKnockOn, plannedChanges, sameUpdates, toRangeUpdates } from '../shared/knock-on';
 import { normalizeName, validateSegmentInput } from '../shared/validate';
 import { buildDetail, buildOverview, withTrip } from './read-model';
 import {
@@ -77,59 +77,54 @@ function parseSegmentInput(body: Record<string, unknown>): ParsedInput {
 }
 
 /**
- * How the other legs should make room, if the caller asked for that. Exactly one
- * of two forms:
+ * How the other legs should make room, if the caller asked for that:
+ * `resolve_start` / `resolve_end` name a resolution per end of the leg (see
+ * knock-on.ts). The server always plans them itself, from rows it has just
+ * read, so the ranges it writes can never be stale.
  *
- * - `others`: the other legs' new ranges, as the Segments tab sends them — the
- *   very changes the user saw and chose in the editor;
- * - `resolve_start` / `resolve_end`: a resolution per end of the leg, for
- *   callers without the editor's planner (the MCP tools). The server plans it.
- *
- * Neither form is trusted: both end up as range updates that are validated
- * against the trip's current rows and written in one checked transaction.
+ * `expect_moved` is what the Segments tab adds: the other legs' ranges it
+ * showed the user for those picks. When the fresh plan differs — another tab
+ * changed a leg in between — the save is refused with a 409 and the tab
+ * refetches, rather than applying changes the user never saw. MCP callers
+ * leave it out and get whatever their picks mean now.
  */
 type KnockOnRequest =
   | { kind: 'none' }
-  | { kind: 'others'; others: RangeUpdate[] }
-  | { kind: 'picks'; picks: KnockOnPicks }
+  | { kind: 'picks'; picks: KnockOnPicks; expected: RangeUpdate[] | null }
   | { kind: 'invalid'; detail: string };
 
-function parseKnockOn(body: Record<string, unknown>): KnockOnRequest {
-  const rawOthers = body['others'];
-  const rawStart = body['resolve_start'];
-  const rawEnd = body['resolve_end'];
-  const hasPicks = rawStart !== undefined || rawEnd !== undefined;
+function parseExpected(raw: unknown): RangeUpdate[] | null | 'invalid' {
+  if (raw === undefined) return null;
+  if (!Array.isArray(raw) || raw.length > MAX_SEGMENTS_PER_TRIP) return 'invalid';
 
-  if (rawOthers !== undefined && hasPicks) {
-    return { kind: 'invalid', detail: 'send either others or resolve_start/resolve_end, not both' };
-  }
-
-  if (hasPicks) {
-    if (rawStart !== undefined && !isResolution(rawStart)) return { kind: 'invalid', detail: 'resolve_start is invalid' };
-    if (rawEnd !== undefined && !isResolution(rawEnd)) return { kind: 'invalid', detail: 'resolve_end is invalid' };
-    const picks: KnockOnPicks = {};
-    if (rawStart !== undefined) picks.start = rawStart;
-    if (rawEnd !== undefined) picks.end = rawEnd;
-    return { kind: 'picks', picks };
-  }
-
-  if (rawOthers === undefined) return { kind: 'none' };
-  if (!Array.isArray(rawOthers) || rawOthers.length > MAX_SEGMENTS_PER_TRIP) {
-    return { kind: 'invalid', detail: 'others must be a list of legs' };
-  }
-
-  const others: RangeUpdate[] = [];
-  for (const item of rawOthers) {
+  const out: RangeUpdate[] = [];
+  for (const item of raw) {
     const entry = bodyObject(item);
     const id = entry ? bodyInt(entry, 'id') : null;
     const start = entry ? bodyInt(entry, 'start_day') : null;
     const end = entry ? bodyInt(entry, 'end_day') : null;
-    if (id === null || start === null || end === null) {
-      return { kind: 'invalid', detail: 'each of others needs id, start_day and end_day' };
-    }
-    others.push({ id, start_day: start, end_day: end });
+    if (id === null || start === null || end === null) return 'invalid';
+    out.push({ id, start_day: start, end_day: end });
   }
-  return others.length > 0 ? { kind: 'others', others } : { kind: 'none' };
+  return out;
+}
+
+function parseKnockOn(body: Record<string, unknown>): KnockOnRequest {
+  const rawStart = body['resolve_start'];
+  const rawEnd = body['resolve_end'];
+  const expected = parseExpected(body['expect_moved']);
+
+  if (expected === 'invalid') return { kind: 'invalid', detail: 'expect_moved must be a list of legs' };
+  if (rawStart === undefined && rawEnd === undefined) {
+    return expected === null ? { kind: 'none' } : { kind: 'invalid', detail: 'expect_moved needs a resolve_* field' };
+  }
+  if (rawStart !== undefined && !isResolution(rawStart)) return { kind: 'invalid', detail: 'resolve_start is invalid' };
+  if (rawEnd !== undefined && !isResolution(rawEnd)) return { kind: 'invalid', detail: 'resolve_end is invalid' };
+
+  const picks: KnockOnPicks = {};
+  if (rawStart !== undefined) picks.start = rawStart;
+  if (rawEnd !== undefined) picks.end = rawEnd;
+  return { kind: 'picks', picks, expected };
 }
 
 /**
@@ -154,9 +149,9 @@ async function loadDayIndex(ctx: PluginContext, tripId: number): Promise<DayInde
  * The knock-on half of PUT /segments. Returns null when nothing but the edited
  * leg would change, so the caller falls through to the plain guarded update.
  *
- * The final layout is validated as a whole by the same shared validator the
- * editor runs, against rows read here rather than anything the caller sent;
- * then the write happens in one transaction that re-checks the layout itself.
+ * The plan is made from rows read here, validated as a whole by the same
+ * shared validator the editor runs, and written in one transaction that
+ * re-checks the layout itself.
  */
 async function saveWithOthers(
   ctx: PluginContext,
@@ -164,29 +159,34 @@ async function saveWithOthers(
   id: number,
   input: SegmentInput,
   idx: DayIndex,
-  knockOn: Extract<KnockOnRequest, { kind: 'others' | 'picks' }>,
+  request: Extract<KnockOnRequest, { kind: 'picks' }>,
 ): Promise<PluginResponse | null> {
   const rows = await listSegments(ctx, tripId);
-  if (!rows.some((r) => r.id === id)) return notFound();
+  const original = rows.find((r) => r.id === id);
+  if (!original) return notFound();
 
-  let others: RangeUpdate[];
-  if (knockOn.kind === 'picks') {
-    const plan = planKnockOn({ id, start_day: input.start_day, end_day: input.end_day }, rows, idx.count);
-    const planned = explicitChanges(plan, knockOn.picks);
-    if (!planned.ok) return unprocessable([`resolve_${planned.side}_unavailable`]);
-    others = toRangeUpdates(planned.changes);
-  } else {
-    // A leg the caller knows about and we do not was deleted since it read the
-    // trip, so its whole plan is stale.
-    if (knockOn.others.some((o) => !rows.some((r) => r.id === o.id))) return conflict('a leg changed meanwhile');
-    others = knockOn.others;
+  const plan = planKnockOn({ id, start_day: input.start_day, end_day: input.end_day }, rows, idx.count);
+  const planned = plannedChanges(plan, request.picks);
+  const others = planned.ok ? toRangeUpdates(planned.changes) : [];
+
+  // The tab planned against other rows than these: whatever it showed the user
+  // is not what would be written now.
+  if (request.expected && (!planned.ok || !sameUpdates(others, request.expected))) {
+    return conflict('the legs changed meanwhile');
   }
+  if (!planned.ok) return unprocessable([`resolve_${planned.side}_unavailable`]);
   if (others.length === 0) return null;
 
   const issues = validateSegmentInput(input, { dayCount: idx.count, existing: rows, editingId: id, others });
   if (issues.length > 0) return unprocessable(issues);
 
-  const updated = await updateSegmentWithOthers(ctx, tripId, id, input, others);
+  const updated = await updateSegmentWithOthers(
+    ctx,
+    tripId,
+    { id, from: [original.start_day, original.end_day], to: [input.start_day, input.end_day] },
+    input,
+    planned.changes,
+  );
   if (!updated) {
     const existing = await getSegment(ctx, tripId, id);
     return existing ? conflict('the legs changed meanwhile') : notFound();

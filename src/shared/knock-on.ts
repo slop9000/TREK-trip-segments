@@ -13,7 +13,8 @@ import type { DayRange, RangeUpdate, SegmentRow } from './types';
  *
  * Pure and position-based, like everything else in `src/shared/`: it runs in
  * the editor while the user picks days, and again on the server, which plans
- * from its own rows instead of trusting the client's arithmetic.
+ * from its own fresh rows. The editor only sends which option was picked; the
+ * ranges are always the server's.
  *
  * The two ends of the edited leg are handled independently and symmetrically.
  * Only legs AFTER the leg's original range can be touched by a change of its
@@ -78,10 +79,19 @@ export interface KnockOnChoice {
   side: KnockOnSide;
   /** `grow` runs into the neighbour; `shrink` frees days next to it. */
   kind: 'grow' | 'shrink';
-  /** Days of overlap (grow) or days freed (shrink). Always at least 1. */
+  /**
+   * Days of overlap with other legs (grow) or days that were in this leg and no
+   * longer are (shrink). Always at least 1.
+   */
   days: number;
   /** Exactly those days, for the editor to name. */
   span: DayRange;
+  /**
+   * How far `push` or `pull` moves the legs on this side. Usually `days`; more
+   * when the leg jumped INTO its neighbour, because the neighbour then has to
+   * clear the whole new range, not just the days it shares with it.
+   */
+  shift: number;
   /** The leg directly next to the edited one on this side, in its current range. */
   neighbour: { id: number; name: string; color: string; range: DayRange };
   /** In display order, the default first. */
@@ -107,14 +117,41 @@ type Leg = Pick<SegmentRow, 'id' | 'name' | 'color' | 'start_day' | 'end_day'>;
 /** A per-side pick. A side the plan has no choice for is ignored. */
 export type KnockOnPicks = Partial<Record<KnockOnSide, Resolution>>;
 
+/**
+ * What the editor sends with a save that raised a choice: the picks, and the
+ * other legs' ranges it showed for them. The server plans the picks again from
+ * its own rows and refuses the save when the result differs — the user agreed
+ * to those exact changes, not to whatever the picks mean by now.
+ */
+export interface KnockOnSave {
+  picks: KnockOnPicks;
+  expected: RangeUpdate[];
+}
+
+/** Whether two sets of range updates are the same, ignoring order. */
+export function sameUpdates(a: readonly RangeUpdate[], b: readonly RangeUpdate[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((u) => b.some((v) => v.id === u.id && v.start_day === u.start_day && v.end_day === u.end_day));
+}
+
 function byPosition(a: Leg, b: Leg): number {
   return a.start_day - b.start_day || a.id - b.id;
+}
+
+/** Changes in day order, by where each leg was. */
+function byFrom(a: RangeChange, b: RangeChange): number {
+  return a.from[0] - b.from[0] || a.id - b.id;
 }
 
 /**
  * Builds an option from a function that maps each affected leg to its new
  * range. A leg is "gone" when the new range has no day inside the trip, and the
  * option is then blocked by the first such leg in the direction of travel.
+ *
+ * A leg that moves never keeps a last day past the end of the trip: whatever
+ * moved it is cut at the trip's last day, as a push is. Moved legs are
+ * bounds-checked when saved, and a stored range nobody can see is not worth
+ * preserving — it would only make every save of the option fail.
  */
 function option(
   resolution: Resolution,
@@ -126,15 +163,17 @@ function option(
   let blockedBy: KnockOnOption['blockedBy'] = null;
 
   legs.forEach((leg, i) => {
-    const to = next(leg, i);
+    const raw = next(leg, i);
+    const moved = raw[0] !== leg.start_day || raw[1] !== leg.end_day;
+    const to: DayRange = moved ? [raw[0], Math.min(raw[1], dayCount)] : raw;
     const gone = to[1] < to[0] || to[1] < 1 || to[0] > dayCount;
     if (gone && !blockedBy) blockedBy = { id: leg.id, name: leg.name };
-    if (to[0] !== leg.start_day || to[1] !== leg.end_day) {
+    if (moved) {
       changes.push({ id: leg.id, name: leg.name, color: leg.color, from: [leg.start_day, leg.end_day], to });
     }
   });
 
-  changes.sort((a, b) => a.from[0] - b.from[0] || a.id - b.id);
+  changes.sort(byFrom);
   return { resolution, changes, blockedBy, sameAs: null };
 }
 
@@ -142,6 +181,7 @@ function choice(
   side: KnockOnSide,
   kind: KnockOnChoice['kind'],
   span: DayRange,
+  shift: number,
   neighbour: Leg,
   options: KnockOnOption[],
 ): KnockOnChoice {
@@ -154,6 +194,7 @@ function choice(
     kind,
     days: span[1] - span[0] + 1,
     span,
+    shift,
     neighbour: {
       id: neighbour.id,
       name: neighbour.name,
@@ -176,29 +217,41 @@ function sameChanges(a: readonly RangeChange[], b: readonly RangeChange[]): bool
  * The last day moved. `later` are the legs after the leg's ORIGINAL range, in
  * day order, so index 0 is the neighbour and the last one ends the trip.
  */
-function planEnd(oldEnd: number, newEnd: number, later: readonly Leg[], dayCount: number): KnockOnChoice | null {
-  const next = later[0];
-  if (!next) return null;
+function planEnd(old: DayRange, edited: DayRange, later: readonly Leg[], dayCount: number): KnockOnChoice | null {
+  const [oldStart, oldEnd] = old;
+  const [newStart, newEnd] = edited;
+  if (later.length === 0) return null;
 
-  if (newEnd > oldEnd && newEnd >= next.start_day) {
-    // Only the days that actually collide count: a gap before the neighbour is
-    // used up first, so pushing moves the later legs by the overlap, not by
-    // however far the last day moved.
-    const d = newEnd - next.start_day + 1;
-    return choice('end', 'grow', [next.start_day, newEnd], next, [
-      option('push', later, dayCount, (leg) => [leg.start_day + d, Math.min(leg.end_day + d, dayCount)]),
-      option('take', [next], dayCount, (leg) => [newEnd + 1, leg.end_day]),
+  // The legs still in the way: a leg the new range has jumped clean over ends
+  // up before it and is left where it is.
+  const inWay = later.filter((leg) => leg.end_day >= newStart);
+  const hit = inWay[0];
+  if (newEnd > oldEnd && hit && hit.start_day <= newEnd) {
+    // A gap before the first leg in the way is used up first, so pushing moves
+    // the legs just far enough for that one to start after the new last day.
+    const d = newEnd - hit.start_day + 1;
+    const lastHit = Math.max(...inWay.filter((leg) => leg.start_day <= newEnd).map((leg) => leg.end_day));
+    const span: DayRange = [Math.max(newStart, hit.start_day), Math.min(newEnd, lastHit)];
+    return choice('end', 'grow', span, d, hit, [
+      option('push', inWay, dayCount, (leg) => [leg.start_day + d, leg.end_day + d]),
+      option('take', [hit], dayCount, (leg) => [newEnd + 1, leg.end_day]),
     ]);
   }
 
+  const next = later[0]!;
   // Shrinking offers a choice only when the freed days were covered right up to
   // the neighbour. With a gap already in between, "give" would leave a hole
   // anyway and "pull" would close a gap the user never asked to close.
+  //
+  // Freed means "was in this leg": when the whole leg moved earlier, past its
+  // own first day, the days between the new and the old range never belonged
+  // to it, and handing them to the neighbour would stretch it across a gap.
   if (newEnd < oldEnd && next.start_day === oldEnd + 1) {
-    const d = oldEnd - newEnd;
+    const freedFrom = Math.max(newEnd + 1, oldStart);
+    const d = oldEnd - freedFrom + 1;
     const last = later.length - 1;
-    return choice('end', 'shrink', [newEnd + 1, oldEnd], next, [
-      option('give', [next], dayCount, (leg) => [newEnd + 1, leg.end_day]),
+    return choice('end', 'shrink', [freedFrom, oldEnd], d, next, [
+      option('give', [next], dayCount, (leg) => [freedFrom, leg.end_day]),
       option('pull', later, dayCount, (leg, i) => [leg.start_day - d, i === last ? leg.end_day : leg.end_day - d]),
       option('gap', [], dayCount, (leg) => [leg.start_day, leg.end_day]),
     ]);
@@ -216,28 +269,30 @@ function planEnd(oldEnd: number, newEnd: number, later: readonly Leg[], dayCount
  * a leg earlier almost always means leaving the place before it sooner, while
  * moving every earlier leg forward in time would rewrite the start of the trip.
  */
-function planStart(
-  oldStart: number,
-  newStart: number,
-  earlier: readonly Leg[],
-  dayCount: number,
-): KnockOnChoice | null {
-  const prev = earlier[0];
-  if (!prev) return null;
+function planStart(old: DayRange, edited: DayRange, earlier: readonly Leg[], dayCount: number): KnockOnChoice | null {
+  const [oldStart, oldEnd] = old;
+  const [newStart, newEnd] = edited;
+  if (earlier.length === 0) return null;
 
-  if (newStart < oldStart && newStart <= prev.end_day) {
-    const d = prev.end_day - newStart + 1;
-    return choice('start', 'grow', [newStart, prev.end_day], prev, [
-      option('take', [prev], dayCount, (leg) => [leg.start_day, newStart - 1]),
-      option('push', earlier, dayCount, (leg) => [Math.max(leg.start_day - d, 1), leg.end_day - d]),
+  const inWay = earlier.filter((leg) => leg.start_day <= newEnd);
+  const hit = inWay[0];
+  if (newStart < oldStart && hit && hit.end_day >= newStart) {
+    const d = hit.end_day - newStart + 1;
+    const firstHit = Math.min(...inWay.filter((leg) => leg.end_day >= newStart).map((leg) => leg.start_day));
+    const span: DayRange = [Math.max(newStart, firstHit), Math.min(newEnd, hit.end_day)];
+    return choice('start', 'grow', span, d, hit, [
+      option('take', [hit], dayCount, (leg) => [leg.start_day, newStart - 1]),
+      option('push', inWay, dayCount, (leg) => [Math.max(leg.start_day - d, 1), leg.end_day - d]),
     ]);
   }
 
+  const prev = earlier[0]!;
   if (newStart > oldStart && prev.end_day === oldStart - 1) {
-    const d = newStart - oldStart;
+    const freedTo = Math.min(newStart - 1, oldEnd);
+    const d = freedTo - oldStart + 1;
     const first = earlier.length - 1;
-    return choice('start', 'shrink', [oldStart, newStart - 1], prev, [
-      option('give', [prev], dayCount, (leg) => [leg.start_day, newStart - 1]),
+    return choice('start', 'shrink', [oldStart, freedTo], d, prev, [
+      option('give', [prev], dayCount, (leg) => [leg.start_day, freedTo]),
       option('pull', earlier, dayCount, (leg, i) => [i === first ? leg.start_day : leg.start_day + d, leg.end_day + d]),
       option('gap', [], dayCount, (leg) => [leg.start_day, leg.end_day]),
     ]);
@@ -265,10 +320,12 @@ export function planKnockOn(edited: EditedRange, rows: readonly Leg[], dayCount:
   const later = inTrip.filter((r) => r.start_day > original.end_day);
   const earlier = inTrip.filter((r) => r.end_day < original.start_day).reverse();
 
+  const old: DayRange = [original.start_day, original.end_day];
+  const range: DayRange = [edited.start_day, edited.end_day];
   const choices: KnockOnChoice[] = [];
-  const start = planStart(original.start_day, edited.start_day, earlier, dayCount);
+  const start = planStart(old, range, earlier, dayCount);
   if (start) choices.push(start);
-  const end = planEnd(original.end_day, edited.end_day, later, dayCount);
+  const end = planEnd(old, range, later, dayCount);
   if (end) choices.push(end);
   return { choices };
 }
@@ -283,49 +340,45 @@ export function pickedOption(c: KnockOnChoice, pick: Resolution | undefined): Kn
   return c.options.find((o) => o.resolution === c.recommended) ?? null;
 }
 
-/**
- * The other legs' new ranges for a set of picks, or null when some choice has
- * no usable option (every way of making room would empty a leg). The two sides
- * touch disjoint legs, so their changes are simply concatenated.
- */
-export function changesFor(plan: KnockOnPlan, picks: KnockOnPicks): RangeChange[] | null {
-  const out: RangeChange[] = [];
-  for (const c of plan.choices) {
-    const picked = pickedOption(c, picks[c.side]);
-    if (!picked) return null;
-    out.push(...picked.changes);
-  }
-  return out.sort((a, b) => a.from[0] - b.from[0] || a.id - b.id);
-}
-
-/** What the update route takes for the other legs. */
+/** What the update route writes for the other legs. */
 export function toRangeUpdates(changes: readonly RangeChange[]): RangeUpdate[] {
   return changes.map((c) => ({ id: c.id, start_day: c.to[0], end_day: c.to[1] }));
 }
 
-export type ExplicitChanges =
+export type PlannedChanges =
   | { ok: true; changes: RangeChange[] }
-  | { ok: false; side: KnockOnSide; resolution: Resolution };
+  | { ok: false; side: KnockOnSide; resolution: Resolution | null };
 
 /**
- * The strict form, for API callers that name a resolution per side.
+ * The other legs' new ranges for a set of picks. The two sides touch disjoint
+ * legs, so their changes are simply concatenated.
  *
- * A side the caller says nothing about keeps the behaviour that predates
- * knock-on saves: growing into a neighbour stays an overlap (and is refused by
- * validation), shrinking leaves a gap. A side the caller does name must offer
- * that resolution unblocked — nothing is substituted behind the caller's back.
- * A pick for a side the edit does not touch is ignored, so a caller can always
- * send its preference without first working out whether it is needed.
+ * `lenient` is the editor's form: a side without a pick (or with one that is
+ * no longer usable) takes its recommendation, and it fails only when a side has
+ * no usable option at all.
+ *
+ * The strict form is the API's. A side the caller says nothing about keeps the
+ * behaviour that predates knock-on saves: growing into a neighbour stays an
+ * overlap (and is refused by validation), shrinking leaves a gap. A side the
+ * caller does name must offer that resolution unblocked — nothing is
+ * substituted behind the caller's back. A pick for a side the edit does not
+ * touch is ignored, so a caller can always send its preference without first
+ * working out whether it is needed.
  */
-export function explicitChanges(plan: KnockOnPlan, picks: KnockOnPicks): ExplicitChanges {
+export function plannedChanges(
+  plan: KnockOnPlan,
+  picks: KnockOnPicks,
+  mode: 'strict' | 'lenient' = 'strict',
+): PlannedChanges {
   const out: RangeChange[] = [];
   for (const c of plan.choices) {
     const pick = picks[c.side];
-    if (pick === undefined) continue;
+    if (pick === undefined && mode === 'strict') continue;
 
-    const picked = c.options.find((o) => o.resolution === pick);
-    if (!picked || picked.blockedBy) return { ok: false, side: c.side, resolution: pick };
+    const picked =
+      mode === 'lenient' ? pickedOption(c, pick) : c.options.find((o) => o.resolution === pick && !o.blockedBy);
+    if (!picked) return { ok: false, side: c.side, resolution: pick ?? null };
     out.push(...picked.changes);
   }
-  return { ok: true, changes: out.sort((a, b) => a.from[0] - b.from[0] || a.id - b.id) };
+  return { ok: true, changes: out.sort(byFrom) };
 }
