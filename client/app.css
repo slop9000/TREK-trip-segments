@@ -187,6 +187,68 @@ html[data-fill] body.trek-ui {
 .seg-issues:not(.seg-issues--on) {
   visibility: hidden;
 }
+.seg-knock:empty {
+  display: none;
+}
+.seg-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.seg-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-faint);
+  border-radius: var(--radius-md, 10px);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms var(--trek-ease, ease), border-color 120ms var(--trek-ease, ease);
+}
+.seg-choice:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.seg-choice--on {
+  border-color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.seg-choice:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.seg-choice-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.seg-choice-sub {
+  font-size: 12px;
+}
+.seg-choice-changes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 2px;
+}
+.seg-choice-change {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  column-gap: 8px;
+  row-gap: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.seg-choice-name {
+  font-weight: 500;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .seg-detail-head {
   display: flex;
   align-items: center;
@@ -567,6 +629,13 @@ html[data-fill] body.trek-ui {
 }
 [data-form-factor=phone] .seg-cal-cell--in:active {
   filter: brightness(1.06);
+}
+[data-form-factor=phone] .seg-choice {
+  min-height: 44px;
+  padding: 12px 14px;
+}
+[data-form-factor=phone] .seg-choice:active:not(:disabled) {
+  background: var(--bg-hover);
 }
 [data-form-factor=phone] .seg-panel-slot {
   background: var(--m-card, var(--bg-card));

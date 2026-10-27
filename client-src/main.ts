@@ -110,7 +110,7 @@ const actions: ShellActions = {
     collapseDetail();
   },
 
-  async onSave(input, id) {
+  async onSave(input, id, others) {
     const tripId = getState().tripId;
     if (tripId === null) return;
 
@@ -122,6 +122,10 @@ const actions: ShellActions = {
         if (editing) {
           const target = rows.find((r) => r.id === id);
           if (target) Object.assign(target, input);
+          for (const moved of others ?? []) {
+            const row = rows.find((r) => r.id === moved.id);
+            if (row) Object.assign(row, { start_day: moved.start_day, end_day: moved.end_day });
+          }
         } else {
           // A placeholder id keeps the strip and list in sync until the real row
           // arrives; the reconcile that follows replaces it either way.
@@ -138,9 +142,9 @@ const actions: ShellActions = {
       },
       call: () =>
         editing
-          ? api('/segments', { method: 'PUT', body: { tripId, id, ...input } })
+          ? api('/segments', { method: 'PUT', body: { tripId, id, ...input, ...(others ? { others } : {}) } })
           : api('/segments', { method: 'POST', body: { tripId, ...input } }),
-      successMessage: editing ? 'Leg updated.' : 'Leg added.',
+      successMessage: editing ? (others ? 'Legs updated.' : 'Leg updated.') : 'Leg added.',
     });
 
     if (!ok) setState({ editor: { mode: editing ? 'edit' : 'create', ...(id !== undefined ? { id } : {}), draft: input, issues: [] } });

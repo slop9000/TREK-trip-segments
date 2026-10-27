@@ -192,6 +192,122 @@ function toneForColor(color) {
   return best;
 }
 
+// src/shared/knock-on.ts
+var RESOLUTIONS = ["push", "take", "give", "pull", "gap"];
+function isResolution(value) {
+  return typeof value === "string" && RESOLUTIONS.includes(value);
+}
+function byPosition(a, b) {
+  return a.start_day - b.start_day || a.id - b.id;
+}
+function option(resolution, legs, dayCount, next) {
+  const changes = [];
+  let blockedBy = null;
+  legs.forEach((leg, i) => {
+    const to = next(leg, i);
+    const gone = to[1] < to[0] || to[1] < 1 || to[0] > dayCount;
+    if (gone && !blockedBy) blockedBy = { id: leg.id, name: leg.name };
+    if (to[0] !== leg.start_day || to[1] !== leg.end_day) {
+      changes.push({ id: leg.id, name: leg.name, color: leg.color, from: [leg.start_day, leg.end_day], to });
+    }
+  });
+  changes.sort((a, b) => a.from[0] - b.from[0] || a.id - b.id);
+  return { resolution, changes, blockedBy, sameAs: null };
+}
+function choice(side, kind, span, neighbour, options) {
+  for (const [i, o] of options.entries()) {
+    const twin = options.slice(0, i).find((earlier) => sameChanges(earlier.changes, o.changes));
+    o.sameAs = twin?.resolution ?? null;
+  }
+  return {
+    side,
+    kind,
+    days: span[1] - span[0] + 1,
+    span,
+    neighbour: {
+      id: neighbour.id,
+      name: neighbour.name,
+      color: neighbour.color,
+      range: [neighbour.start_day, neighbour.end_day]
+    },
+    options,
+    recommended: options.find((o) => !o.blockedBy)?.resolution ?? null
+  };
+}
+function sameChanges(a, b) {
+  return a.length === b.length && a.every((c, i) => c.id === b[i]?.id && c.to[0] === b[i]?.to[0] && c.to[1] === b[i]?.to[1]);
+}
+function planEnd(oldEnd, newEnd, later, dayCount) {
+  const next = later[0];
+  if (!next) return null;
+  if (newEnd > oldEnd && newEnd >= next.start_day) {
+    const d = newEnd - next.start_day + 1;
+    return choice("end", "grow", [next.start_day, newEnd], next, [
+      option("push", later, dayCount, (leg) => [leg.start_day + d, Math.min(leg.end_day + d, dayCount)]),
+      option("take", [next], dayCount, (leg) => [newEnd + 1, leg.end_day])
+    ]);
+  }
+  if (newEnd < oldEnd && next.start_day === oldEnd + 1) {
+    const d = oldEnd - newEnd;
+    const last = later.length - 1;
+    return choice("end", "shrink", [newEnd + 1, oldEnd], next, [
+      option("give", [next], dayCount, (leg) => [newEnd + 1, leg.end_day]),
+      option("pull", later, dayCount, (leg, i) => [leg.start_day - d, i === last ? leg.end_day : leg.end_day - d]),
+      option("gap", [], dayCount, (leg) => [leg.start_day, leg.end_day])
+    ]);
+  }
+  return null;
+}
+function planStart(oldStart, newStart, earlier, dayCount) {
+  const prev = earlier[0];
+  if (!prev) return null;
+  if (newStart < oldStart && newStart <= prev.end_day) {
+    const d = prev.end_day - newStart + 1;
+    return choice("start", "grow", [newStart, prev.end_day], prev, [
+      option("take", [prev], dayCount, (leg) => [leg.start_day, newStart - 1]),
+      option("push", earlier, dayCount, (leg) => [Math.max(leg.start_day - d, 1), leg.end_day - d])
+    ]);
+  }
+  if (newStart > oldStart && prev.end_day === oldStart - 1) {
+    const d = newStart - oldStart;
+    const first = earlier.length - 1;
+    return choice("start", "shrink", [oldStart, newStart - 1], prev, [
+      option("give", [prev], dayCount, (leg) => [leg.start_day, newStart - 1]),
+      option("pull", earlier, dayCount, (leg, i) => [i === first ? leg.start_day : leg.start_day + d, leg.end_day + d]),
+      option("gap", [], dayCount, (leg) => [leg.start_day, leg.end_day])
+    ]);
+  }
+  return null;
+}
+function planKnockOn(edited, rows2, dayCount) {
+  const original = rows2.find((r) => r.id === edited.id);
+  if (!original) return { choices: [] };
+  const others = rows2.filter((r) => r.id !== edited.id).sort(byPosition);
+  const inTrip = others.filter((r) => r.start_day <= dayCount);
+  const later = inTrip.filter((r) => r.start_day > original.end_day);
+  const earlier = inTrip.filter((r) => r.end_day < original.start_day).reverse();
+  const choices = [];
+  const start = planStart(original.start_day, edited.start_day, earlier, dayCount);
+  if (start) choices.push(start);
+  const end = planEnd(original.end_day, edited.end_day, later, dayCount);
+  if (end) choices.push(end);
+  return { choices };
+}
+function toRangeUpdates(changes) {
+  return changes.map((c) => ({ id: c.id, start_day: c.to[0], end_day: c.to[1] }));
+}
+function explicitChanges(plan, picks) {
+  const out = [];
+  for (const c of plan.choices) {
+    const pick = picks[c.side];
+    if (pick === void 0) continue;
+    const picked = c.options.find((o) => o.resolution === pick);
+    if (!picked || picked.blockedBy) return { ok: false, side: c.side, resolution: pick };
+    out.push(...picked.changes);
+  }
+  return { ok: true, changes: out.sort((a, b) => a.from[0] - b.from[0] || a.id - b.id) };
+}
+
 // src/shared/validate.ts
 function isControl(codePoint) {
   return codePoint < 32 || codePoint === 127;
@@ -213,6 +329,30 @@ function findOverlap(input, existing, editingId) {
   }
   return null;
 }
+function wellFormedRange(start, end) {
+  return Number.isInteger(start) && Number.isInteger(end) && start >= 1 && end >= start && end <= MAX_TRIP_DAYS;
+}
+function applyRangeUpdates(existing, others) {
+  const byId = new Map(others.map((u) => [u.id, u]));
+  return existing.map((row) => {
+    const update = byId.get(row.id);
+    return update ? { ...row, start_day: update.start_day, end_day: update.end_day } : row;
+  });
+}
+function othersFit(others, existing, dayCount, editingId) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const u of others) {
+    if (ids.has(u.id) || u.id === editingId || !existing.some((r) => r.id === u.id)) return false;
+    ids.add(u.id);
+    if (!wellFormedRange(u.start_day, u.end_day) || u.end_day > dayCount) return false;
+  }
+  const world = applyRangeUpdates(existing, others).filter((r) => r.id !== editingId);
+  for (const moved of world) {
+    if (!ids.has(moved.id)) continue;
+    if (findOverlap(moved, world, moved.id)) return false;
+  }
+  return true;
+}
 function validateSegmentInput(input, opts) {
   const issues = [];
   const name = normalizeName(input.name);
@@ -221,13 +361,17 @@ function validateSegmentInput(input, opts) {
   if (!isHexColor(input.color)) issues.push("color_invalid");
   const start = input.start_day;
   const end = input.end_day;
-  const rangeWellFormed = Number.isInteger(start) && Number.isInteger(end) && start >= 1 && end >= start && end <= MAX_TRIP_DAYS;
-  if (!rangeWellFormed) {
+  const others = opts.others ?? [];
+  const world = others.length > 0 ? applyRangeUpdates(opts.existing, others) : opts.existing;
+  if (!wellFormedRange(start, end)) {
     issues.push("range_invalid");
   } else if (end > opts.dayCount) {
     issues.push("range_out_of_bounds");
-  } else if (findOverlap({ start_day: start, end_day: end }, opts.existing, opts.editingId)) {
+  } else if (findOverlap({ start_day: start, end_day: end }, world, opts.editingId)) {
     issues.push("overlap");
+  }
+  if (others.length > 0 && !othersFit(others, opts.existing, opts.dayCount, opts.editingId)) {
+    issues.push("others_invalid");
   }
   if (opts.editingId === void 0 && opts.existing.length >= MAX_SEGMENTS_PER_TRIP) {
     issues.push("limit_reached");
@@ -351,6 +495,24 @@ SET name = ?, color = ?, tone = ?, start_day = ?, end_day = ?, updated_at = date
 WHERE id = ? AND trip_id = ?
   AND NOT EXISTS (SELECT 1 FROM segments WHERE trip_id = ? AND id <> ? AND start_day <= ? AND end_day >= ?)
 RETURNING ${COLUMNS}`;
+var SQL_UPDATE_EDITED = `UPDATE segments
+SET name = ?, color = ?, tone = ?, start_day = ?, end_day = ?, updated_at = datetime('now')
+WHERE id = ? AND trip_id = ?
+RETURNING ${COLUMNS}`;
+var SQL_UPDATE_RANGE = `UPDATE segments
+SET start_day = ?, end_day = ?, updated_at = datetime('now')
+WHERE id = ? AND trip_id = ?`;
+function sqlAbortIfLayoutBroken(touched) {
+  const placeholders = new Array(touched).fill("?").join(", ");
+  return `INSERT INTO segments (trip_id, name, color, tone, start_day, end_day)
+SELECT ?, '', '#000000', 'default', 1, 0
+WHERE EXISTS (
+    SELECT 1 FROM segments a JOIN segments b
+      ON b.trip_id = a.trip_id AND b.id > a.id AND a.start_day <= b.end_day AND a.end_day >= b.start_day
+    WHERE a.trip_id = ?
+  )
+  OR (SELECT COUNT(*) FROM segments WHERE trip_id = ? AND id IN (${placeholders})) <> ?`;
+}
 function sqlListForTrips(count) {
   const placeholders = new Array(count).fill("?").join(", ");
   return `SELECT trip_id, name, color, tone, start_day, end_day FROM segments WHERE trip_id IN (${placeholders}) ORDER BY trip_id ASC, start_day ASC, id ASC`;
@@ -429,6 +591,29 @@ async function updateSegmentIfFree(ctx, tripId, id, input) {
     input.start_day
   );
   return rows(updated)[0] ?? null;
+}
+async function updateSegmentWithOthers(ctx, tripId, id, input, others) {
+  const touched = [id, ...others.map((o) => o.id)];
+  const ops = [
+    {
+      sql: SQL_UPDATE_EDITED,
+      args: [input.name, input.color, toneForColor(input.color), input.start_day, input.end_day, id, tripId]
+    },
+    ...others.map((o) => ({ sql: SQL_UPDATE_RANGE, args: [o.start_day, o.end_day, o.id, tripId] })),
+    { sql: sqlAbortIfLayoutBroken(touched.length), args: [tripId, tripId, tripId, ...touched, touched.length] }
+  ];
+  let result;
+  try {
+    result = await ctx.db.tx(ops);
+  } catch (err) {
+    ctx.log.warn("knock-on save refused", {
+      tripId,
+      touched: touched.length,
+      message: err instanceof Error ? err.message : String(err)
+    });
+    return null;
+  }
+  return rows(result.results[0]?.rows ?? [])[0] ?? null;
 }
 async function deleteSegment(ctx, tripId, id) {
   const { changes } = await ctx.db.exec(SQL_DELETE, tripId, id);
@@ -637,11 +822,68 @@ function parseSegmentInput(body) {
     missing
   };
 }
+function parseKnockOn(body) {
+  const rawOthers = body["others"];
+  const rawStart = body["resolve_start"];
+  const rawEnd = body["resolve_end"];
+  const hasPicks = rawStart !== void 0 || rawEnd !== void 0;
+  if (rawOthers !== void 0 && hasPicks) {
+    return { kind: "invalid", detail: "send either others or resolve_start/resolve_end, not both" };
+  }
+  if (hasPicks) {
+    if (rawStart !== void 0 && !isResolution(rawStart)) return { kind: "invalid", detail: "resolve_start is invalid" };
+    if (rawEnd !== void 0 && !isResolution(rawEnd)) return { kind: "invalid", detail: "resolve_end is invalid" };
+    const picks = {};
+    if (rawStart !== void 0) picks.start = rawStart;
+    if (rawEnd !== void 0) picks.end = rawEnd;
+    return { kind: "picks", picks };
+  }
+  if (rawOthers === void 0) return { kind: "none" };
+  if (!Array.isArray(rawOthers) || rawOthers.length > MAX_SEGMENTS_PER_TRIP) {
+    return { kind: "invalid", detail: "others must be a list of legs" };
+  }
+  const others = [];
+  for (const item of rawOthers) {
+    const entry = bodyObject(item);
+    const id = entry ? bodyInt(entry, "id") : null;
+    const start = entry ? bodyInt(entry, "start_day") : null;
+    const end = entry ? bodyInt(entry, "end_day") : null;
+    if (id === null || start === null || end === null) {
+      return { kind: "invalid", detail: "each of others needs id, start_day and end_day" };
+    }
+    others.push({ id, start_day: start, end_day: end });
+  }
+  return others.length > 0 ? { kind: "others", others } : { kind: "none" };
+}
 function fieldIssues(input, dayCount) {
   return validateSegmentInput(input, { dayCount, existing: [] });
 }
 async function loadDayIndex(ctx, tripId) {
   return buildDayIndex(await ctx.trips.getDays(tripId));
+}
+async function saveWithOthers(ctx, tripId, id, input, idx, knockOn) {
+  const rows2 = await listSegments(ctx, tripId);
+  if (!rows2.some((r) => r.id === id)) return notFound();
+  let others;
+  if (knockOn.kind === "picks") {
+    const plan = planKnockOn({ id, start_day: input.start_day, end_day: input.end_day }, rows2, idx.count);
+    const planned = explicitChanges(plan, knockOn.picks);
+    if (!planned.ok) return unprocessable([`resolve_${planned.side}_unavailable`]);
+    others = toRangeUpdates(planned.changes);
+  } else {
+    if (knockOn.others.some((o) => !rows2.some((r) => r.id === o.id))) return conflict("a leg changed meanwhile");
+    others = knockOn.others;
+  }
+  if (others.length === 0) return null;
+  const issues = validateSegmentInput(input, { dayCount: idx.count, existing: rows2, editingId: id, others });
+  if (issues.length > 0) return unprocessable(issues);
+  const updated = await updateSegmentWithOthers(ctx, tripId, id, input, others);
+  if (!updated) {
+    const existing = await getSegment(ctx, tripId, id);
+    return existing ? conflict("the legs changed meanwhile") : notFound();
+  }
+  await announceChange(ctx, tripId);
+  return json(200, { segment: resolveSegment(updated, idx.count, 0, idx.dateByPos), moved: others });
 }
 var routes = [
   {
@@ -713,11 +955,17 @@ var routes = [
       if (id === null) return badRequest("id is required");
       const { input, missing } = parseSegmentInput(body);
       if (missing.length > 0) return badRequest(`missing or invalid: ${missing.join(", ")}`);
+      const knockOn = parseKnockOn(body);
+      if (knockOn.kind === "invalid") return badRequest(knockOn.detail);
       await ensureSchema(ctx);
       const result = await withTrip(ctx, tripId, async () => {
         const idx = await loadDayIndex(ctx, tripId);
         const issues = fieldIssues(input, idx.count);
         if (issues.length > 0) return unprocessable(issues);
+        if (knockOn.kind !== "none") {
+          const moved = await saveWithOthers(ctx, tripId, id, input, idx, knockOn);
+          if (moved) return moved;
+        }
         const updated = await updateSegmentIfFree(ctx, tripId, id, input);
         if (!updated) {
           const existing = await getSegment(ctx, tripId, id);
@@ -784,6 +1032,18 @@ var SEGMENT_PROPERTIES = {
     minimum: 1,
     maximum: MAX_TRIP_DAYS,
     description: "The inclusive 1-based position of the last trip day in the segment."
+  }
+};
+var RESOLVE_PROPERTIES = {
+  resolve_end: {
+    type: "string",
+    enum: ["push", "take", "give", "pull", "gap"],
+    description: "When end_day moves. Into the next segment: push moves every later segment later by the overlap (the last one is cut at the final trip day), take shortens only the next segment. Away from a directly following segment: give extends the next segment back, pull moves every later segment earlier (the last keeps its end), gap leaves the days uncovered. Without it, an overlap is refused."
+  },
+  resolve_start: {
+    type: "string",
+    enum: ["push", "take", "give", "pull", "gap"],
+    description: "The same for start_day and the segments before: push moves every earlier segment earlier (the first is cut at day 1), take shortens only the previous one; give, pull and gap as for resolve_end."
   }
 };
 var READ_ANNOTATIONS = {
@@ -873,10 +1133,10 @@ var mcpTools = [
   },
   {
     name: "update_trip_segment",
-    description: "Replace the name, colour and inclusive day range of an existing trip segment. All editable fields are required.",
+    description: "Replace the name, colour and inclusive day range of an existing trip segment. All editable fields are required. Pass resolve_end or resolve_start to move neighbouring segments in the same atomic save.",
     inputSchema: {
       type: "object",
-      properties: { tripId: TRIP_ID, id: SEGMENT_ID, ...SEGMENT_PROPERTIES },
+      properties: { tripId: TRIP_ID, id: SEGMENT_ID, ...SEGMENT_PROPERTIES, ...RESOLVE_PROPERTIES },
       required: ["tripId", "id", "name", "color", "start_day", "end_day"],
       additionalProperties: false
     },

@@ -46,6 +46,26 @@ const SEGMENT_PROPERTIES = {
   },
 } as const;
 
+/**
+ * Optional on update: how neighbouring segments make room when an edit runs
+ * into them or frees days next to them. Mirrors the choice the Segments tab
+ * offers, and is planned and validated server-side (src/shared/knock-on.ts).
+ */
+const RESOLVE_PROPERTIES = {
+  resolve_end: {
+    type: 'string',
+    enum: ['push', 'take', 'give', 'pull', 'gap'],
+    description:
+      'When end_day moves. Into the next segment: push moves every later segment later by the overlap (the last one is cut at the final trip day), take shortens only the next segment. Away from a directly following segment: give extends the next segment back, pull moves every later segment earlier (the last keeps its end), gap leaves the days uncovered. Without it, an overlap is refused.',
+  },
+  resolve_start: {
+    type: 'string',
+    enum: ['push', 'take', 'give', 'pull', 'gap'],
+    description:
+      'The same for start_day and the segments before: push moves every earlier segment earlier (the first is cut at day 1), take shortens only the previous one; give, pull and gap as for resolve_end.',
+  },
+} as const;
+
 const READ_ANNOTATIONS = {
   readOnlyHint: true,
   destructiveHint: false,
@@ -155,10 +175,10 @@ export const mcpTools: PluginMcpTool[] = [
   {
     name: 'update_trip_segment',
     description:
-      'Replace the name, colour and inclusive day range of an existing trip segment. All editable fields are required.',
+      'Replace the name, colour and inclusive day range of an existing trip segment. All editable fields are required. Pass resolve_end or resolve_start to move neighbouring segments in the same atomic save.',
     inputSchema: {
       type: 'object',
-      properties: { tripId: TRIP_ID, id: SEGMENT_ID, ...SEGMENT_PROPERTIES },
+      properties: { tripId: TRIP_ID, id: SEGMENT_ID, ...SEGMENT_PROPERTIES, ...RESOLVE_PROPERTIES },
       required: ['tripId', 'id', 'name', 'color', 'start_day', 'end_day'],
       additionalProperties: false,
     },
