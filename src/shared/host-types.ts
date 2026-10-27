@@ -412,17 +412,23 @@ export interface PluginHooks {
     /** Called ONCE with every visible, access-checked trip id (≤60). */
     getCards(tripIds: number[], ctx: PluginContext): Promise<TripCardContribution[]>;
   };
+  /**
+   * TREK 5. Needs `mcp:tools`. `name` arrives without the `plugin_<id>_` prefix
+   * the tool is advertised under, and ctx carries the calling user, so trip
+   * reads are membership-checked against them. A throw becomes a tool error.
+   */
+  mcpToolProvider?: {
+    tools: string[];
+    callTool(call: { name: string; args: unknown }, ctx: PluginContext): Promise<unknown>;
+  };
 }
 
 /**
- * A tool contributed to TREK's MCP server.
+ * One of our MCP tools: the schema TREK advertises plus the handler behind it.
  *
- * SPECULATIVE. No released TREK reads this key, 4.0.0 included — there is no
- * plugin-contributed MCP surface in the tree at all — so this shape is a guess
- * rather than a transcription of a host contract. TREK's own MCP tools are
- * compile-time Nest providers taking a Zod raw shape and returning an MCP
- * content envelope, which is not what is described here. Kept because an unknown
- * definition key is inert; re-derive it from the host before trusting it.
+ * TREK 5 advertises a plugin tool only when it appears in BOTH the signed
+ * manifest's `capabilities.mcpTools` and the hook's `tools` list, so the
+ * manifest copy is checked against these definitions in test/plugin.test.ts.
  */
 export interface PluginMcpTool {
   name: string;
@@ -441,6 +447,4 @@ export interface PluginDefinition {
   onLoad?(ctx: PluginContext): Promise<void> | void;
   routes?: PluginRoute[];
   hooks?: PluginHooks;
-  /** Inert on every released TREK — see PluginMcpTool above. */
-  mcpTools?: PluginMcpTool[];
 }

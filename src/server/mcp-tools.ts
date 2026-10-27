@@ -184,3 +184,15 @@ export const mcpTools: PluginMcpTool[] = [
     handler: (input, ctx) => invoke('DELETE', '/segments', input, ctx),
   },
 ];
+
+export const mcpToolProvider = {
+  tools: mcpTools.map((tool) => tool.name),
+  async callTool(call: { name: string; args: unknown }, ctx: PluginContext): Promise<unknown> {
+    const tool = mcpTools.find((candidate) => candidate.name === call.name);
+    if (!tool) throw new Error(`unknown tool ${call.name}`);
+
+    const args = call.args;
+    const input = args && typeof args === 'object' && !Array.isArray(args) ? (args as Record<string, unknown>) : {};
+    return tool.handler(input, ctx);
+  },
+};

@@ -901,6 +901,16 @@ var mcpTools = [
     handler: (input, ctx) => invoke("DELETE", "/segments", input, ctx)
   }
 ];
+var mcpToolProvider = {
+  tools: mcpTools.map((tool) => tool.name),
+  async callTool(call, ctx) {
+    const tool = mcpTools.find((candidate) => candidate.name === call.name);
+    if (!tool) throw new Error(`unknown tool ${call.name}`);
+    const args = call.args;
+    const input = args && typeof args === "object" && !Array.isArray(args) ? args : {};
+    return tool.handler(input, ctx);
+  }
+};
 
 // src/server/hooks/day-schedule.ts
 function liveSegments(views) {
@@ -1235,24 +1245,18 @@ var plugin = {
   },
   routes,
   /**
-   * Inert. No released TREK reads `mcpTools`, 4.0.0 included. An unknown
-   * definition key costs nothing, so the declarations stay ready rather than
-   * being deleted now and rewritten later — see PluginMcpTool in
-   * shared/host-types.ts for what is and is not known about the shape.
-   */
-  mcpTools,
-  /**
-   * Each of these needs its matching `hook:*` permission in trek-plugin.json.
+   * Each of these needs its matching permission in trek-plugin.json.
    * Without it the plugin still installs and activates, and the hook is simply
    * never called — no error, no log, nothing. test/plugin.test.ts asserts the
-   * two lists agree, with no exceptions: all five are granted as of 1.2.0.
+   * two lists agree, with no exceptions.
    */
   hooks: {
     dayScheduleProvider: { getSchedule },
     dayTintProvider: { getDayTints },
     mapLayerProvider: { getLayers },
     pdfSectionProvider: { getSections },
-    tripCardProvider: { getCards }
+    tripCardProvider: { getCards },
+    mcpToolProvider
   }
 };
 var index_default = plugin;
